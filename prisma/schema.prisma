@@ -33,12 +33,20 @@ model Stream {
   upvotes         Upvote[]
   userId          String
   user            User      @relation(fields: [userId], references: [id])
+  currentStream   CurrentStream?
 }
+
+model CurrentStream {
+  userId           String    @id
+  streamId         String?   @unique
+  stream           Stream?   @relation(fields: [streamId], references: [id])
+}
+
 
 model Upvote {
   id        String    @id @default(uuid())
   userId    String
-  streamId   String
+  streamId  String
   user      User      @relation(fields: [userId], references: [id])
   stream    Stream    @relation(fields: [streamId], references: [id])
   @@unique([userId, streamId])

@@ -3,10 +3,10 @@ import { z } from "zod";
 import { prismaClient } from "@/app/lib/db";
 // @ts-expect-error No Types available
 import youtubesearchapi from "youtube-search-api";
- 
-var YT_REGEX = /^(?:(?:https?:)?\/\/)?(?:www\.)?(?:m\.)?(?:youtu(?:be)?\.com\/(?:v\/|embed\/|watch(?:\/|\?v=))|youtu\.be\/)((?:\w|-){11})(?:\S+)?$/;
+import { YT_REGEX } from "@/app/lib/utils";
+import { getToken } from "next-auth/jwt";
 
-const CreateStreamScema = z.object({
+const CreateStreamSchema = z.object({
     creatorId: z.string(),
     url: z.string() 
 })
@@ -14,7 +14,7 @@ const CreateStreamScema = z.object({
 
 export async function POST(req: NextRequest) {
     try {        
-        const data = CreateStreamScema.parse(await req. json());
+        const data = CreateStreamSchema.parse(await req. json());
         const isYt = data.url.match(YT_REGEX)
         
         if (!isYt) {
@@ -47,8 +47,9 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({
-            message: "Added Stream",
-            id: stream.id
+            ...stream,
+            hasUpvoted: false,
+            upvotes: 0
 
         })
 
@@ -61,15 +62,65 @@ export async function POST(req: NextRequest) {
     }
 }
 
+const secret = process.env.NEXTAUTH_SECRET;
+
 export async function GET(req: NextRequest) {
     const creatorId = req.nextUrl.searchParams.get("creatorId");
+    const token = await getToken({ req, secret });
+    
+        if (!token || !token.email) {
+            return NextResponse.json({ 
+                message: "Unauthenticated" 
+            }, { 
+                status: 403 
+            });
+        }
+    
+        const user = await prismaClient.user.findFirst({
+            where: { 
+                email: token.email 
+            }
+        });
+    
+        if (!user) {
+            return NextResponse.json({ 
+                message: "User not found" 
+            }, { 
+                status: 403 
+            });
+        }
+    
+    
+    if (!creatorId) {
+        return NextResponse.json({
+            message: "Error"
+        }, {
+            status: 411
+        })
+    }
     const streams = await prismaClient.stream.findMany({
-        where: {
-            userId: creatorId ?? ""
+        where: { 
+            userId: creatorId 
+        },
+        include: {
+            _count: {
+                select: {
+                    upvotes: true
+                }
+            },
+            upvotes: {
+                where: {
+                    userId: user.id    
+                }
+            }
         }
     })
 
-    return NextResponse.json({
-        streams
+    return NextResponse.json({ 
+        streams: streams.map(({_count, ...rest}) => ({
+            ...rest,
+            upvotes: _count.upvotes,
+            haveUpvoted: rest.upvotes.length ? true : false
+        }))
     })
 }
