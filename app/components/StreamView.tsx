@@ -30,7 +30,7 @@ interface Video {
     haveUpvoted: boolean
 }
 
-const REFRESH_INTERVAL_MS = 10 * 100000;
+const REFRESH_INTERVAL_MS = 10 * 1000;
 
 export default function StreamView({
     creatorId,
@@ -54,9 +54,15 @@ export default function StreamView({
             credentials: "include",
         });
         const json = await res.json();
-        setQueue(json.streams.sort((a: any, b: any) => a.upvotes < b.upvotes ? 1 : -1));
+        setQueue(json.streams.sort((a: any, b: any) => {
+            if (a.upvotes === b.upvotes) {
+                return new Date(a.createdAt) > new Date(b.createdAt) ? 1 : -1;
+            }
+            return b.upvotes - a.upvotes;
+        }));
+
         setCurrentVideo(video => {
-            if (video?.id === json.activeStream?.stream) {
+            if (!json.activeStream?.stream || video?.id === json.activeStream.stream.id) {
                 return video;
             }
             return json.activeStream.stream
@@ -97,32 +103,34 @@ export default function StreamView({
         };
     }, [creatorId]); // 👈 Add dependency
 
-
-
     useEffect(() => {
-
-        if (!videoPlayerRef.current) {
-            return;
-        }
-
+        if (!videoPlayerRef.current || !currentVideo?.extractedId) return;
+    
         const player = YouTubePlayer(videoPlayerRef.current);
-
-        player.loadVideoById(currentVideo?.extractedId);
-
-        player.playVideo();
-
-        function eventHandler(event: any) {
-
+    
+        player.loadVideoById(currentVideo.extractedId);
+    
+        // Mute the video to allow autoplay
+        player.mute();
+    
+        player.playVideo().catch(err => {
+            console.warn("Autoplay failed:", err);
+        });
+    
+        const eventHandler = (event: any) => {
             if (event.data === 0) {
                 playNext();
             }
-        }
-
-        player.on('stateChange', eventHandler);
+        };
+    
+        player.on("stateChange", eventHandler);
+    
         return () => {
             player.destroy();
-        }
-    }, [currentVideo, videoPlayerRef])
+        };
+    }, [currentVideo]);
+    
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -165,35 +173,32 @@ export default function StreamView({
 
 
     const playNext = async () => {
-        if (queue.length > 0) {
-            try {
-                setPlayNextLoader(true);
-                const response = await fetch("/api/streams/next", {
-                    method: "GET",
-                });
+        try {
+            setPlayNextLoader(true);
+            const response = await fetch("/api/streams/next", { method: "GET" });
 
-                if (!response.ok) {
-                    const errMsg = await response.json();
-                    console.error("Fetch failed:", errMsg.message);
-                    return;
-                }
-
-                const json = await response.json();
-
-                if (!json.stream) {
-                    console.warn("No stream received");
-                    return;
-                }
-
-                setCurrentVideo(json.stream);
-                setQueue(q => q.filter(x => x.id !== json.stream.id));
-            } catch (e) {
-                console.error("Error: ", e);
-            } finally {
-                setPlayNextLoader(false);
+            if (!response.ok) {
+                const errMsg = await response.json();
+                console.log("Fetch failed:", errMsg.message);
+                return;
             }
+
+            const json = await response.json();
+
+            if (!json.stream) {
+                console.warn("No stream received");
+                return;
+            }
+
+            setCurrentVideo(json.stream);
+            setQueue(q => q.filter(x => x.id !== json.stream.id)); // optional
+        } catch (e) {
+            console.error("Error: ", e);
+        } finally {
+            setPlayNextLoader(false);
         }
     };
+
 
 
     const handleShare = () => {
