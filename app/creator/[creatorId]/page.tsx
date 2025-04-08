@@ -1,6 +1,6 @@
 import StreamView from "@/app/components/StreamView"
 
-export default function creatorId({
+export default function Creator({
     params: {
         creatorId
     }
@@ -10,6 +10,6 @@ export default function creatorId({
     }
 }) {
     return <div>
-        <StreamView creatorId={creatorId}/>
+        <StreamView key={creatorId} creatorId={creatorId} playVideo={false}/>
     </div>
 }

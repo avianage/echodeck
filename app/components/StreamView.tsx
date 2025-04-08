@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +13,8 @@ import "react-toastify/dist/ReactToastify.css";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
 import { YT_REGEX } from "@/app/lib/utils";
-
+import { Appbar } from "./Appbar";
+import YouTubePlayer from "youtube-player";
 
 interface Video {
     id: string,
@@ -29,17 +30,22 @@ interface Video {
     haveUpvoted: boolean
 }
 
-const REFRESH_INTERVAL_MS = 10 * 1000;
+const REFRESH_INTERVAL_MS = 10 * 100000;
 
 export default function StreamView({
-    creatorId
+    creatorId,
+    playVideo = false
 }: {
-    creatorId: string
+    creatorId: string,
+    playVideo: boolean
 }) {
     const [videoLink, setVideoLink] = useState('');
     const [queue, setQueue] = useState<Video[]>([]);
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [loading, setLoading] = useState(false);
+    const [playNextLoader, setPlayNextLoader] = useState(false);
+    const videoPlayerRef = useRef<HTMLDivElement | null>(null);
+
 
     async function refreshStreams() {
         console.log("Fetching streams...");
@@ -49,16 +55,74 @@ export default function StreamView({
         });
         const json = await res.json();
         setQueue(json.streams.sort((a: any, b: any) => a.upvotes < b.upvotes ? 1 : -1));
+        setCurrentVideo(video => {
+            if (video?.id === json.activeStream?.stream) {
+                return video;
+            }
+            return json.activeStream.stream
+
+        });
     }
 
     useEffect(() => {
-        refreshStreams();
-        const interval = setInterval(() => {
-            refreshStreams();
-        }, REFRESH_INTERVAL_MS);
+        console.log("🔵 StreamView mounted");
+
+        return () => {
+            console.log("🔴 StreamView unmounted");
+        };
     }, []);
 
 
+    useEffect(() => {
+        const handleEnter = (e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+                handleSubmit(e as any);
+            }
+        };
+        window.addEventListener("keydown", handleEnter);
+        return () => window.removeEventListener("keydown", handleEnter);
+    }, [videoLink]);
+
+
+    useEffect(() => {
+        refreshStreams();
+
+        const interval = setInterval(() => {
+            refreshStreams();
+        }, REFRESH_INTERVAL_MS);
+
+        return () => {
+            console.log("🧹 Clearing interval for creator:", creatorId);
+            clearInterval(interval);
+        };
+    }, [creatorId]); // 👈 Add dependency
+
+
+
+    useEffect(() => {
+
+        if (!videoPlayerRef.current) {
+            return;
+        }
+
+        const player = YouTubePlayer(videoPlayerRef.current);
+
+        player.loadVideoById(currentVideo?.extractedId);
+
+        player.playVideo();
+
+        function eventHandler(event: any) {
+
+            if (event.data === 0) {
+                playNext();
+            }
+        }
+
+        player.on('stateChange', eventHandler);
+        return () => {
+            player.destroy();
+        }
+    }, [currentVideo, videoPlayerRef])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -100,12 +164,37 @@ export default function StreamView({
     };
 
 
-    const playNext = () => {
+    const playNext = async () => {
         if (queue.length > 0) {
-            setCurrentVideo(queue[0]);
-            setQueue(queue.slice(1));
+            try {
+                setPlayNextLoader(true);
+                const response = await fetch("/api/streams/next", {
+                    method: "GET",
+                });
+
+                if (!response.ok) {
+                    const errMsg = await response.json();
+                    console.error("Fetch failed:", errMsg.message);
+                    return;
+                }
+
+                const json = await response.json();
+
+                if (!json.stream) {
+                    console.warn("No stream received");
+                    return;
+                }
+
+                setCurrentVideo(json.stream);
+                setQueue(q => q.filter(x => x.id !== json.stream.id));
+            } catch (e) {
+                console.error("Error: ", e);
+            } finally {
+                setPlayNextLoader(false);
+            }
         }
     };
+
 
     const handleShare = () => {
         const sharableLink = `${window.location.hostname}/creator/${creatorId}`;
@@ -136,117 +225,167 @@ export default function StreamView({
     };
 
     return (
-        <div className="flex min-h-screen flex-col bg-gradient-to-br from-black via-blue-900 to-gray-900 p-6 text-white">
-            <h1 className="text-3xl font-bold text-center mb-6">
-                🎵 Fan-Powered Stream Queue
-            </h1>
 
-            <div className="flex justify-end mb-4">
-                <Button
-                    onClick={handleShare}
-                    variant="outline"
-                    className="border-white text-white"
-                >
-                    <Share2 className="w-4 h-4 mr-2" /> Share with Fans
-                </Button>
+        <div className="flex min-h-screen flex-col  bg-gray-950  px-8 md:px-20 pt-6 text-white">
+            <div className="mb-8 ">
+                <Appbar />
             </div>
-
-            <div className="flex flex-col md:flex-row gap-4 items-center mb-8">
-                <Input
-                    value={videoLink}
-                    onChange={(e) => setVideoLink(e.target.value)}
-                    placeholder="Paste YouTube link here"
-                    className="w-full md:w-2/3 text-black"
-                />
-                <Button
-                    onClick={handleSubmit}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                    type="submit"
-                    disabled={loading}
-                >{loading ? "Loading..." : "Add to Queue..."}</Button>
-            </div>
-
-            {videoLink && videoLink.match(YT_REGEX) && !loading && (
-                <div className="mb-8">
-                    {/* <iframe
-                        className="w-full aspect-video rounded-md"
-                        src={`https://www.youtube.com/embed/${extractVideoId(videoLink)}`}
-                        title="YouTube preview"
-                        allowFullScreen
-                    /> */}
-
-                    <LiteYouTubeEmbed title="Youtube Video" id={videoLink.match(YT_REGEX)![1]} />
+            {/* Main Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-8">
+                {/* Left Column - Upcoming Songs */}
+                <div>
+                    <h2 className="text-2xl font-semibold mb-4">Upcoming Songs</h2>
+                    {queue.length <= 0 ? (
+                        <Card className="bg-gray-900 border-gray-800 text-white">
+                            <CardContent className="p-4">
+                                <p className="text-gray-300">No songs in queue.</p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
+                            {queue.map((video) => (
+                                <Card key={video.id} className="bg-white/10 text-white">
+                                    <CardContent className="p-4 flex items-center gap-4">
+                                        <div className="w-24 h-16 relative">
+                                            <Image
+                                                src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
+                                                alt={video.title}
+                                                fill
+                                                className="rounded object-cover"
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold">{video.title}</h3>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    handleVote(video.id, !video.haveUpvoted)
+                                                }
+                                                className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                                            >
+                                                {video.haveUpvoted ? (
+                                                    <ChevronDown className="h-4 w-4" />
+                                                ) : (
+                                                    <ChevronUp className="h-4 w-4" />
+                                                )}
+                                                <span>{video.upvotes}</span>
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
                 </div>
-            )}
 
-            {currentVideo && (
-                <div className="mb-8">
-                    <h2 className="text-2xl font-semibold mb-4">Now Playing</h2>
-                    <iframe
-                        className="w-full aspect-video rounded-md"
-                        src={`https://www.youtube.com/embed/${currentVideo.extractedId}?autoplay=1`}
-                        title="Current Song"
-                        allowFullScreen
-                    />
-                </div>
-            )}
 
-            <div className="text-center">
-                <Button
-                    onClick={playNext}
-                    className="text-white bg-green-600 hover:bg-green-700"
-                >
-                    <Play className="mr-2 h-4 w-4" /> Play Next
-                </Button>
-            </div>
+                {/* Right Column - Add Song & Current Video */}
+                <div className="space-y-6">
+                    {/* Add to Queue */}
+                    <div>
+                        {/* Top row: Add to Queue + Share button */}
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-2xl font-medium">Add to Queue</p>
+                            <Button
+                                onClick={handleShare}
+                                variant="default"
+                                className=" bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow"
+                            >
+                                <Share2 className="w-4 h-4 mr-2" /> Share
+                            </Button>
+                        </div>
 
-            <div>
-                <h2 className="text-2xl font-semibold mb-4">Upcoming Songs</h2>
-                {queue.length <= 0 ? (
-                    <p className="text-gray-300">No songs in queue.</p>
-                ) : (
-                    <div className="grid gap-6 md:grid-cols-2">
-                        {queue.map((video) => (
-                            <Card key={video.id} className="bg-white/10 text-white">
-                                <CardContent className="p-4 flex items-center gap-4">
-                                    <div className="w-24 h-16 relative">
-                                        <Image
-                                            src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
-                                            alt={video.title}
-                                            fill
-                                            className="rounded object-cover"
-                                        />
-                                    </div>
-                                    <div className="flex-1">
-                                        <h3 className="font-bold">{video.title}</h3>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                                handleVote(
-                                                    video.id,
-                                                    !video.haveUpvoted
-                                                )
-                                            }
-                                            className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-                                        >
-                                            {video.haveUpvoted ? (
-                                                <ChevronDown className="h-4 w-4" />
-                                            ) : (
-                                                <ChevronUp className="h-4 w-4" />
-                                            )}
-                                            <span>{video.upvotes}</span>
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                        {/* Input + Add button row */}
+                        <div className="flex flex-col">
+                            <div className="mb-4">
+                                <Input
+                                    value={videoLink}
+                                    onChange={(e) => setVideoLink(e.target.value)}
+                                    placeholder="Paste YouTube link here"
+                                    className="w-full bg-gray-900 border-gray-800 text-white"
+                                />
+                            </div>
+                            <div>
+                                <Button
+                                    onClick={handleSubmit}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                    type="submit"
+                                    disabled={loading}
+                                >
+                                    {loading ? "Loading..." : "Add to Queue"}
+                                </Button>
+                            </div>
+                        </div>
+
+
+
                     </div>
-                )}
+
+
+                    {/* YouTube Preview */}
+                    {videoLink && videoLink.match(YT_REGEX) && !loading && (
+                        <LiteYouTubeEmbed
+                            title="Youtube Video"
+                            id={videoLink.match(YT_REGEX)![1]}
+                        />
+                    )}
+
+                    {/* Current Video */}
+                    <div>
+                        <h2 className="text-2xl text-white mb-2">Now Playing</h2>
+                        <Card className="bg-gray-900 border-gray-800">
+                            <CardContent className="p-4">
+                                {currentVideo ? (
+                                    playVideo ? (
+
+                                        <div id="youtube-player" ref={videoPlayerRef} className="w-full">
+
+                                        </div>
+                                        // <iframe
+                                        //     width={"100%"}
+                                        //     height={300}
+                                        //     src={`https://www.youtube.com/embed/${currentVideo.extractedId}?autoplay=1`}
+                                        //     allow="autoplay"
+                                        //     title="Current Video"
+                                        //     className="rounded"
+                                        // />
+                                    ) : (
+                                        <>
+                                            <iframe
+                                                src={currentVideo.bigImg}
+                                                title="Current Video"
+                                                className="w-full h-72 object-cover rounded-md"
+                                                allowFullScreen
+                                            />
+                                            <p className="mt-2 text-center font-semibold text-white">
+                                                {currentVideo.title}
+                                            </p>
+                                        </>
+                                    )
+                                ) : (
+                                    <p className="text-center py-8 text-gray-400">No video playing</p>
+                                )}
+                            </CardContent>
+                        </Card>
+                        {playNext && (
+                            <Button
+                                disabled={playNextLoader}
+                                onClick={playNext}
+                                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                                <Play className="mr-2 h-4 w-4" />
+                                {playNextLoader ? "Loading..." : "Play Next"}
+                            </Button>
+                        )}
+                    </div>
+                </div>
             </div>
-            <ToastContainer 
+
+            {/* Toasts */}
+            <ToastContainer
                 position="top-right"
                 autoClose={3000}
                 hideProgressBar={false}
@@ -260,4 +399,5 @@ export default function StreamView({
             />
         </div>
     );
+
 }
