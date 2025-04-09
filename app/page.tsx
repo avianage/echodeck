@@ -10,7 +10,9 @@ import { Redirect } from "./components/Redirect";
 export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-black via-blue-900 to-gray-900">
-      <Appbar />
+      <div className="px-8 md:px-20 py-4">
+        <Appbar />
+      </div>
       <Redirect/>
       {/* Hero Section */}
       <main className="flex flex-col items-center justify-center py-16 md:py-24 lg:py-32 text-center">
@@ -72,7 +74,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="flex flex-col items-center gap-4 border-t border-gray-700 px-4 py-6 sm:flex-row sm:justify-between">
-        <p className="text-xs text-gray-400">© 2025 Tunify. All rights reserved.</p>
+        <p className="text-xs text-gray-400">© 2025 EchoDeck. All rights reserved.</p>
         <nav className="flex gap-6">
           <Link href="#" className="text-xs text-gray-400 hover:text-blue-400">
             Terms of Service
