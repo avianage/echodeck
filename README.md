@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Sure! Here's a clean and professional `README.md` template for your **EchoDeck** project based on everything we've talked about:
 
-## Getting Started
+---
 
-First, run the development server:
+```markdown
+# 🎧 EchoDeck
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+**EchoDeck** is a collaborative streaming queue web app where creators can manage video queues and listeners can upvote or suggest tracks in real time. Built with **Next.js 14 App Router**, **Prisma**, **PostgreSQL**, and **NextAuth**, it delivers a smooth and interactive experience for managing media queues.
+
+---
+
+## 🚀 Features
+
+- 🔐 **Google Authentication** via NextAuth
+- 🎥 **Video Queue System** for creators
+- 👍 **Upvote mechanism** to prioritize videos
+- 👥 **Multiple user roles**: Creator & Listener
+- 🧹 **Queue clearing logic** with persistent database sync
+- 📡 **Dynamic rendering** of the current video and playlist
+- 💾 **PostgreSQL + Prisma ORM** for type-safe DB operations
+- ⚡ Real-time state updates (planned with websockets or polling)
+
+---
+
+## 🧱 Tech Stack
+
+| Tech             | Description                                |
+|------------------|--------------------------------------------|
+| **Next.js 14**   | App Router for file-based routing          |
+| **TypeScript**   | Strong typing across the app               |
+| **PostgreSQL**   | Relational database                        |
+| **Prisma**       | Type-safe ORM with codegen                 |
+| **NextAuth**     | Auth system with Google OAuth              |
+| **Tailwind CSS** | Styling framework (optional, if used)      |
+
+---
+
+## 🧠 Database Models
+
+The app uses the following main Prisma models:
+
+- `User` — Authenticated user info
+- `Stream` — Represents each media item
+- `CurrentStream` — Tracks the currently playing stream
+- `Upvote` — Voting table for prioritizing queue
+
+Refer to `prisma/schema.prisma` for detailed definitions.
+
+---
+
+## 🛠️ Setup Instructions
+
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/yourusername/echodeck.git
+   cd echodeck
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment variables**
+
+   Create a `.env` file in the root:
+
+   ```env
+   DATABASE_URL=postgresql://your-db-url
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   NEXTAUTH_SECRET=your-nextauth-secret
+   ```
+
+4. **Set up Prisma**
+   ```bash
+   npx prisma generate
+   npx prisma migrate dev --name init
+   ```
+
+5. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 📁 Folder Structure
+
+```
+app/
+│
+├── api/
+│   ├── streams/
+│   │   ├── route.ts          # Fetch streams
+│   │   └── clear/route.ts    # Clear queue logic
+│   └── auth/[...nextauth]/   # NextAuth route handler
+│
+├── lib/
+│   └── db.ts                 # Prisma client instance
+│
+├── creator/[creatorId]/      # Creator dashboard
+└── ...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📌 Future Plans
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [ ] WebSocket support for real-time queue updates
+- [ ] Admin dashboard for creators
+- [ ] Spotify integration
+- [ ] Listener chatroom feature
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🤝 Contributing
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Pull requests and feedback are welcome! Let's build a better streaming experience together.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 📄 License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+MIT © 2025 Aakash Joshi
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+Let me know if you'd like to add badges, a demo link, or tailor this for deployment (like Vercel/Render/etc).
