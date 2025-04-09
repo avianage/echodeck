@@ -15,6 +15,7 @@ import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
 import { YT_REGEX } from "@/app/lib/utils";
 import { Appbar } from "./Appbar";
 import YouTubePlayer from "youtube-player";
+import { usePathname } from "next/navigation";
 
 interface Video {
     id: string,
@@ -45,29 +46,37 @@ export default function StreamView({
     const [loading, setLoading] = useState(false);
     const [playNextLoader, setPlayNextLoader] = useState(false);
     const videoPlayerRef = useRef<HTMLDivElement | null>(null);
-
+    const pathname = usePathname();
 
     async function refreshStreams() {
-        console.log("Fetching streams...");
-        const res = await fetch(`/api/streams/?creatorId=${creatorId}`, {
-            method: "GET",
-            credentials: "include",
-        });
-        const json = await res.json();
-        setQueue(json.streams.sort((a: any, b: any) => {
-            if (a.upvotes === b.upvotes) {
-                return new Date(a.createdAt) > new Date(b.createdAt) ? 1 : -1;
-            }
-            return b.upvotes - a.upvotes;
-        }));
+        try {
+            console.log("Fetching streams...");
+            const res = await fetch(`/api/streams/?creatorId=${creatorId}`, {
+                method: "GET",
+                credentials: "include",
+            });
+            const json = await res.json();
+            setQueue(json.streams.sort((a: any, b: any) => {
+                if (a.upvotes === b.upvotes) {
+                    return new Date(a.createdAt) > new Date(b.createdAt) ? 1 : -1;
+                }
+                return b.upvotes - a.upvotes;
+            }));
 
-        setCurrentVideo(video => {
-            if (!json.activeStream?.stream || video?.id === json.activeStream.stream.id) {
-                return video;
-            }
-            return json.activeStream.stream
+            setCurrentVideo(video => {
+                if (!json.activeStream?.stream) {
+                    // If no active stream exists, clear the video
+                    return null;
+                }
+                if (!json.activeStream?.stream || video?.id === json.activeStream.stream.id) {
+                    return video;
+                }
+                return json.activeStream.stream
 
-        });
+            });
+        } catch (error) {
+            console.error("Error Fetching Stream: ", error)
+        }
     }
 
     useEffect(() => {
@@ -101,7 +110,7 @@ export default function StreamView({
             console.log("🧹 Clearing interval for creator:", creatorId);
             clearInterval(interval);
         };
-    }, [creatorId]); // 👈 Add dependency
+    }, [creatorId]);
 
     useEffect(() => {
         if (!videoPlayerRef.current || !currentVideo?.extractedId) return;
@@ -109,9 +118,6 @@ export default function StreamView({
         const player = YouTubePlayer(videoPlayerRef.current);
 
         player.loadVideoById(currentVideo.extractedId);
-
-        // Mute the video to allow autoplay
-        player.mute();
 
         player.playVideo().catch(err => {
             console.warn("Autoplay failed:", err);
@@ -129,8 +135,6 @@ export default function StreamView({
             player.destroy();
         };
     }, [currentVideo]);
-
-
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -171,7 +175,6 @@ export default function StreamView({
         });
     };
 
-
     const playNext = async () => {
         try {
             setPlayNextLoader(true);
@@ -199,6 +202,30 @@ export default function StreamView({
         }
     };
 
+    const stopQueue = async () => {
+        try {
+            const response = await fetch("/api/streams/clear", {
+                method: "POST",
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.message || "Failed to stop queue");
+            }
+            setCurrentVideo(null);
+            setQueue([]);
+
+            if (videoPlayerRef.current) {
+                videoPlayerRef.current.innerHTML = '';
+            }
+
+            refreshStreams();
+
+            console.log("Queue successfully cleared");
+        } catch (error) {
+            console.error("Error stopping queue:", error);
+        }
+    };
 
 
     const handleShare = () => {
@@ -345,8 +372,12 @@ export default function StreamView({
                             <CardContent className="p-4">
                                 {currentVideo ? (
                                     playVideo ? (
+                                        <div className="w-full">
 
-                                        <div id="youtube-player" ref={videoPlayerRef} className="w-full">
+                                            <div id="youtube-player" ref={videoPlayerRef} className="w-full" />
+                                            <p className="mt-2 text-center font-semibold text-white">
+                                                {currentVideo.title}
+                                            </p>
 
                                         </div>
                                         // <iframe
@@ -358,32 +389,52 @@ export default function StreamView({
                                         //     className="rounded"
                                         // />
                                     ) : (
-                                        <>
-                                            <iframe
-                                                src={currentVideo.bigImg}
-                                                title="Current Video"
-                                                className="w-full h-72 object-cover rounded-md"
-                                                allowFullScreen
-                                            />
+
+                                        <div className="w-full">
+                                            <div className="relative w-full h-72">
+                                                <Image
+                                                    src={currentVideo.bigImg}
+                                                    alt={currentVideo.title}
+                                                    fill
+                                                    className="object-contain rounded-md"
+                                                    sizes="(max-width: 768px) 100vw, 700px"
+                                                    priority={true}
+                                                />
+                                            </div>
                                             <p className="mt-2 text-center font-semibold text-white">
                                                 {currentVideo.title}
                                             </p>
-                                        </>
+                                        </div>
+
+
+
                                     )
                                 ) : (
                                     <p className="text-center py-8 text-gray-400">No video playing</p>
                                 )}
                             </CardContent>
                         </Card>
-                        {playNext && (
-                            <Button
-                                disabled={playNextLoader}
-                                onClick={playNext}
-                                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                                <Play className="mr-2 h-4 w-4" />
-                                {playNextLoader ? "Loading..." : "Play Next"}
-                            </Button>
+                        {!pathname.startsWith("/creator/") && playNext && (
+                            <>
+                                <div className="flex gap-4 mt-4">
+                                    <Button
+                                        disabled={playNextLoader}
+                                        onClick={playNext}
+                                        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                        <Play className="mr-2 h-4 w-4" />
+                                        {playNextLoader ? "Loading..." : "Play Next"}
+                                    </Button>
+
+                                    <Button
+                                        onClick={stopQueue}
+                                        className="w-full mt-4 text-white"
+                                        variant="destructive"
+                                    >
+                                        Stop Queue
+                                    </Button>
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>
