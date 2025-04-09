@@ -15,7 +15,6 @@ import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
 import { YT_REGEX } from "@/app/lib/utils";
 import { Appbar } from "./Appbar";
 import YouTubePlayer from "youtube-player";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface Video {
     id: string,
