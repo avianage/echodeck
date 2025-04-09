@@ -5,12 +5,14 @@ import { prismaClient } from "@/app/lib/db";
 import youtubesearchapi from "youtube-search-api";
 import { YT_REGEX } from "@/app/lib/utils";
 import { getToken } from "next-auth/jwt";
+import { getServerSession } from "next-auth";
 
 const CreateStreamSchema = z.object({
     creatorId: z.string(),
     url: z.string() 
 })
 
+const MAX_QUEUE_LENGTH = 20;
 
 export async function POST(req: NextRequest) {
     try {        
@@ -28,15 +30,43 @@ export async function POST(req: NextRequest) {
         const extractedId = data.url.split("?v=")[1];
 
         const res = await youtubesearchapi.GetVideoDetails(extractedId);
-        console.log(res.title);
-        console.log(res.thumbnail.thumbnails);
         const thumbnails = res.thumbnail.thumbnails;
         thumbnails.sort((a: {width: number}, b: {width: number}) => a.width < b.width ? -1 : 1);
         
+        const session = await getServerSession();
+        
+                if (!session?.user?.email) {
+                    return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
+                }
+        
+                const user = await prismaClient.user.findUnique({
+                    where: {
+                        email: session.user.email,
+                    },
+                });
+        
+                if (!user) {
+                    return NextResponse.json({ message: "User not found" }, { status: 403 });
+                }
+
+        const existingActiveStream = await prismaClient.stream.count({
+            where: {
+                userId: data.creatorId
+            }
+        })
+
+        if (existingActiveStream > MAX_QUEUE_LENGTH){
+            return NextResponse.json({
+                message: "Stream Queue At limit"
+            }, {
+                status: 411
+            })
+        }
 
         const stream = await prismaClient.stream.create({
             data: {
                 userId: data.creatorId,
+                addedById: user.id,
                 url: data.url,
                 extractedId,
                 type: "Youtube",

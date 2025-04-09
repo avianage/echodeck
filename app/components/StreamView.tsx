@@ -157,8 +157,7 @@ export default function StreamView({
                 ? {
                     ...video,
                     upvotes: isUpvote ? video.upvotes + 1 : video.upvotes - 1,
-                    haveUpvoted: !video.haveUpvoted,
-                    direction: isUpvote ? "up" : "down",
+                    haveUpvoted: !video.haveUpvoted
                 }
                 : video
         )
@@ -250,62 +249,40 @@ export default function StreamView({
                         </Card>
                     ) : (
                         <div className="space-y-4">
-                            <AnimatePresence>
-                                {queue.map((video) => (
-                                    <motion.div
-                                        key={video.id}
-                                        layout
-                                        transition={{ type: "spring", stiffness: 100, damping: 20 }} 
-                                        initial={{ opacity: 0, scale: 0.95 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.95 }}
-                                    >
-                                        <Card className="bg-white/10 text-white">
-                                            <CardContent className="p-4 flex items-center gap-4">
-                                                <div className="w-24 h-16 relative">
-                                                    <Image
-                                                        src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
-                                                        alt={video.title}
-                                                        fill
-                                                        className="rounded object-cover"
-                                                    />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <h3 className="font-bold">{video.title}</h3>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleVote(video.id, !video.haveUpvoted)}
-                                                        className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-                                                    >
-                                                        {video.haveUpvoted ? (
-                                                            <ChevronDown className="h-4 w-4" />
-                                                        ) : (
-                                                            <ChevronUp className="h-4 w-4" />
-                                                        )}
-                                                        <div className="relative w-6 h-5 overflow-hidden flex items-center justify-center">
-                                                            <AnimatePresence initial={false} mode="wait">
-                                                                <motion.span
-                                                                    key={video.upvotes}
-                                                                    initial={{ y: video.direction === "up" ? 10 : -10, opacity: 0 }}
-                                                                    animate={{ y: 0, opacity: 1 }}
-                                                                    exit={{ y: video.direction === "up" ? -10 : 10, opacity: 0 }}
-                                                                    transition={{ duration: 0.3 }}
-                                                                    className="absolute"
-                                                                >
-                                                                    {video.upvotes}
-                                                                </motion.span>
-                                                            </AnimatePresence>
-                                                        </div>
-                                                    </Button>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </motion.div>
-                                ))}
-                            </AnimatePresence>
+                            {queue.map((video) => (
+                                <Card key={video.id} className="bg-white/10 text-white">
+                                    <CardContent className="p-4 flex items-center gap-4">
+                                        <div className="w-24 h-16 relative">
+                                            <Image
+                                                src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
+                                                alt={video.title}
+                                                fill
+                                                className="rounded object-cover"
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold">{video.title}</h3>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    handleVote(video.id, !video.haveUpvoted)
+                                                }
+                                                className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                                            >
+                                                {video.haveUpvoted ? (
+                                                    <ChevronDown className="h-4 w-4" />
+                                                ) : (
+                                                    <ChevronUp className="h-4 w-4" />
+                                                )}
+                                                <span>{video.upvotes}</span>
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
                         </div>
                     )}
                 </div>
