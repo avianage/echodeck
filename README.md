@@ -1,8 +1,3 @@
-Sure! Here's a clean and professional `README.md` template for your **EchoDeck** project based on everything we've talked about:
-
----
-
-```markdown
 # 🎧 EchoDeck
 
 **EchoDeck** is a collaborative streaming queue web app where creators can manage video queues and listeners can upvote or suggest tracks in real time. Built with **Next.js 14 App Router**, **Prisma**, **PostgreSQL**, and **NextAuth**, it delivers a smooth and interactive experience for managing media queues.
@@ -112,19 +107,17 @@ app/
 - [ ] Spotify integration
 - [ ] Listener chatroom feature
 
----
 
 ## 🤝 Contributing
 
 Pull requests and feedback are welcome! Let's build a better streaming experience together.
 
----
 
 ## 📄 License
 
 MIT © 2025 Aakash Joshi
-```
 
----
 
 Let me know if you'd like to add badges, a demo link, or tailor this for deployment (like Vercel/Render/etc).
+
+```
