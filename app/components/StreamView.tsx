@@ -12,12 +12,13 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
-import { YT_REGEX } from "@/app/lib/utils";
+import { Share2, Volume2, VolumeX, X, ListPlus, Plus, Trash2 } from "lucide-react";
+import { PLAYLIST_REGEX, YT_REGEX } from "@/app/lib/utils";
+import { AnimatePresence, motion } from "framer-motion";
 import { Appbar } from "./Appbar";
 import YouTubePlayer from "youtube-player";
 import { usePathname } from "next/navigation";
 import { pusherClient } from "@/app/lib/pusher";
-import { Share2, Volume2, VolumeX } from "lucide-react";
 
 interface Video {
     id: string,
@@ -29,6 +30,7 @@ interface Video {
     bigImg: string,
     active: string,
     userId: string,
+    addedById: string,
     upvotes: number,
     haveUpvoted: boolean,
     playedTs: string | null
@@ -54,6 +56,16 @@ export default function StreamView({
     const [isPaused, setIsPaused] = useState(false);
     const [isJoined, setIsJoined] = useState(false);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
+    const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+    const [playlistVideos, setPlaylistVideos] = useState<any[]>([]);
+    const [playlistTitle, setPlaylistTitle] = useState("");
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [activityLogs, setActivityLogs] = useState<{ type: "success" | "error", message: string, timestamp: number }[]>([]);
+
+    const addLog = (type: "success" | "error", message: string) => {
+        setActivityLogs(prev => [{ type, message, timestamp: Date.now() }, ...prev].slice(0, 10));
+    };
+    const [playlistErrors, setPlaylistErrors] = useState<{ title: string, reason: string }[]>([]);
 
     const videoPlayerRef = useRef<HTMLDivElement | null>(null);
     const playerInstanceRef = useRef<any>(null);
@@ -73,6 +85,7 @@ export default function StreamView({
                 }
                 return b.upvotes - a.upvotes;
             }));
+            setCurrentUserId(json.currentUserId);
 
             setCurrentVideo(video => {
                 if (!json.activeStream?.stream) {
@@ -148,13 +161,28 @@ export default function StreamView({
             }
         });
 
+        channel.bind("queue-cleared", () => {
+            console.log("🚫 Queue cleared by creator, resetting state...");
+            if (playerInstanceRef.current) {
+                try {
+                    playerInstanceRef.current.destroy();
+                } catch (e) {
+                    console.error("Sync cleanup error:", e);
+                }
+                playerInstanceRef.current = null;
+            }
+            setCurrentVideo(null);
+            setQueue([]);
+            toast.info("Stream ended by host");
+        });
+
         channel.bind("request-sync", async () => {
             const isCreator = !pathname.startsWith("/creator/");
             if (!isCreator || !playerInstanceRef.current) return;
 
             console.log("📥 Sync requested by listener, broadcasting current state...");
             const player = playerInstanceRef.current;
-            const currentTime = await player.getCurrentTime();
+            const currentTime = (await player.getCurrentTime()) || 0;
             const state = await player.getPlayerState();
             const type = state === 1 ? "play" : "pause";
 
@@ -164,7 +192,7 @@ export default function StreamView({
                 body: JSON.stringify({
                     creatorId,
                     type,
-                    currentTime
+                    currentTime: typeof currentTime === 'number' ? currentTime : 0
                 })
             });
         });
@@ -254,6 +282,7 @@ export default function StreamView({
                     }
 
                     if (event.data === 1 || event.data === 2) {
+                        const currentTime = (await playerInstanceRef.current.getCurrentTime()) || 0;
                         console.log(`📤 Sending sync: ${type} at ${currentTime}s`);
                         fetch("/api/streams/sync", {
                             method: "POST",
@@ -261,7 +290,7 @@ export default function StreamView({
                             body: JSON.stringify({
                                 creatorId,
                                 type,
-                                currentTime
+                                currentTime: typeof currentTime === 'number' ? currentTime : 0
                             })
                         }).then(r => {
                             if (!r.ok) console.error("❌ Sync broadcast failed status:", r.status);
@@ -329,19 +358,145 @@ export default function StreamView({
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setLoading(true);
-        const res = await fetch("/api/streams/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                creatorId: creatorId,
-                url: videoLink
-            })
-        })
+        e.preventDefault();
+        if (!videoLink.trim()) return;
 
-        setQueue([...queue, await res.json()]);
-        setLoading(false);
+        const playlistMatch = videoLink.match(PLAYLIST_REGEX);
+        if (playlistMatch) {
+            const playlistId = playlistMatch[1];
+            setLoading(true);
+            try {
+                const res = await fetch("/api/streams/playlist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ playlistId })
+                });
+                if (!res.ok) throw new Error("Failed to fetch playlist");
+                const data = await res.json();
+                setPlaylistVideos(data.videos);
+                setPlaylistTitle(data.title);
+                setIsPlaylistModalOpen(true);
+            } catch (err) {
+                toast.error("Could not load playlist. Make sure it's public.");
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await fetch("/api/streams/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    creatorId: creatorId,
+                    url: videoLink
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const errorMsg = data.message || "Failed to add video";
+                toast.error(errorMsg);
+                addLog("error", `Failed: ${videoLink} - ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
+            setQueue([...queue, data]);
+            setVideoLink('');
+            toast.success("Added to queue!");
+            addLog("success", `Added single video: ${data.title}`);
+        } catch (err: any) {
+            console.error("Error adding video:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAddFromPlaylist = async (video: any) => {
+        try {
+            const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
+            const res = await fetch("/api/streams/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    creatorId: creatorId,
+                    url: videoUrl
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const errorMsg = data.message || "Failed to add video";
+                toast.error(errorMsg);
+                addLog("error", `Failed ${video.title}: ${errorMsg}`);
+                return;
+            }
+            toast.success(`Added ${video.title}`);
+            addLog("success", `Added from playlist: ${video.title}`);
+            refreshStreams();
+        } catch (err) {
+            toast.error("Error adding video");
+            addLog("error", `Error adding video: ${video.title}`);
+        }
+    };
+
+    const handleAddAllFromPlaylist = async () => {
+        setIsPlaylistModalOpen(false);
+        const total = playlistVideos.length;
+        let successCount = 0;
+        let failCount = 0;
+
+        toast.info(`Adding ${total} videos...`, { autoClose: 5000 });
+
+        for (let i = 0; i < total; i++) {
+            const video = playlistVideos[i];
+
+            // Throttling: Gap of 5 seconds after the first 5 songs
+            if (i >= 5) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+
+            try {
+                const res = await fetch("/api/streams/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        creatorId: creatorId,
+                        url: `https://www.youtube.com/watch?v=${video.id}`
+                    })
+                });
+
+                if (res.ok) {
+                    successCount++;
+                    addLog("success", `Playlist add: ${video.title}`);
+                } else {
+                    failCount++;
+                    const errData = await res.json();
+                    const errorMsg = errData.message || "Unknown error";
+                    console.error(`Failed to add video ${i + 1}: ${video.title}. Error:`, errorMsg);
+                    addLog("error", `Skip ${video.title}: ${errorMsg}`);
+                }
+            } catch (err) {
+                failCount++;
+                console.error(`Network error adding video ${i + 1}:`, err);
+                addLog("error", `Network Error: ${video.title}`);
+            }
+
+            // Progress toast every 5 videos
+            if ((i + 1) % 5 === 0) {
+                toast.info(`Progress: ${i + 1}/${total} processed...`, { autoClose: 2000 });
+            }
+
+            // Update UI periodically
+            if ((i + 1) % 5 === 0 || i === total - 1) {
+                refreshStreams();
+            }
+        }
+
+        if (failCount > 0) {
+            toast.warning(`Finished! ${successCount} added, ${failCount} failed. Check console for details.`);
+        } else {
+            toast.success(`Successfully added all ${successCount} videos to queue!`);
+        }
         setVideoLink('');
     };
 
@@ -364,6 +519,26 @@ export default function StreamView({
     //         setLoading(false);
     //     }
     // };
+
+    const handleRemove = async (streamId: string) => {
+        try {
+            const res = await fetch("/api/streams/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ streamId })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || "Failed to remove stream");
+            }
+
+            toast.success("Song removed from queue");
+            refreshStreams();
+        } catch (err: any) {
+            toast.error(err.message || "Error removing song");
+        }
+    };
 
     const handleVote = (id: string, isUpvote: boolean) => {
         console.log("Voting for Stream ID:", id);
@@ -407,8 +582,23 @@ export default function StreamView({
                 return;
             }
 
-            setCurrentVideo(json.stream);
-            setQueue(q => q.filter(x => x.id !== json.stream.id)); // optional
+            // Defensively destroy old player before loading new one
+            // to prevent removeChild conflicts during unmounting/remounting
+            if (playerInstanceRef.current) {
+                try {
+                    playerInstanceRef.current.destroy();
+                } catch (e) {
+                    console.error("playNext: Error destroying old player:", e);
+                }
+                playerInstanceRef.current = null;
+            }
+
+            // Small delay to ensure YouTube API has finished DOM cleanup
+            setTimeout(() => {
+                setCurrentVideo(json.stream);
+                setQueue(q => q.filter(x => x.id !== json.stream.id));
+                toast.info(`Now playing: ${json.stream.title}`);
+            }, 50);
         } catch (e) {
             console.error("Error: ", e);
         } finally {
@@ -427,18 +617,29 @@ export default function StreamView({
                 const data = await response.json();
                 throw new Error(data.message || "Failed to stop queue");
             }
-            setCurrentVideo(null);
-            setQueue([]);
 
-            if (videoPlayerRef.current) {
-                videoPlayerRef.current.innerHTML = '';
+            // Cleanup YouTube player FIRST to avoid race conditions with React unmounting
+            if (playerInstanceRef.current) {
+                try {
+                    playerInstanceRef.current.destroy();
+                } catch (e) {
+                    console.error("Safe cleanup: Error destroying player:", e);
+                }
+                playerInstanceRef.current = null;
             }
 
-            refreshStreams();
+            // Delay state updates slightly to ensure YouTube API finishes DOM manipulation
+            setTimeout(() => {
+                setCurrentVideo(null);
+                setQueue([]);
+                refreshStreams();
+                toast.success("Queue stopped and cleared!");
+            }, 50);
 
             console.log("Queue successfully cleared");
         } catch (error) {
             console.error("Error stopping queue:", error);
+            toast.error("Failed to stop queue");
         }
     };
 
@@ -497,23 +698,19 @@ export default function StreamView({
     };
 
     return (
-
         <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 text-white overflow-x-hidden">
             <div className="mb-8">
                 <Appbar />
             </div>
 
             <div className="max-w-7xl mx-auto w-full">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left Column - Now Playing (2/3 width) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-20">
                     <div className="lg:col-span-2 space-y-6">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-3xl font-bold text-white flex items-center gap-2">
-                                Now Playing
-                            </h2>
+                            <h2 className="text-3xl font-bold text-white">Now Playing</h2>
                             <Button
                                 onClick={handleShare}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/20 active:scale-95"
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
                             >
                                 <Share2 className="w-4 h-4 mr-2" /> Share
                             </Button>
@@ -527,7 +724,6 @@ export default function StreamView({
                                             <div className="relative">
                                                 <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] md:min-h-[450px] bg-black" />
 
-                                                {/* Go Live Overlay for Listeners */}
                                                 {pathname.startsWith("/creator/") && !isJoined && (
                                                     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
                                                         <div className="text-center space-y-6 max-w-sm px-6">
@@ -543,7 +739,7 @@ export default function StreamView({
                                                                 onClick={handleGoLive}
                                                                 disabled={!isPlayerReady}
                                                                 className={`w-full h-14 text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl ${isPlayerReady
-                                                                    ? "bg-blue-600 hover:bg-blue-700 text-white scale-105 hover:scale-110 shadow-blue-600/20"
+                                                                    ? "bg-blue-600 hover:bg-blue-700 text-white scale-105 hover:scale-110"
                                                                     : "bg-gray-800 text-gray-500 cursor-not-allowed"
                                                                     }`}
                                                             >
@@ -553,10 +749,9 @@ export default function StreamView({
                                                     </div>
                                                 )}
 
-                                                {/* Custom Pause Overlay */}
                                                 {isPaused && currentVideo && (isJoined || !pathname.startsWith("/creator/")) && (
                                                     <div
-                                                        className={`absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 ${isPaused ? "opacity-100" : "opacity-0"} ${!pathname.startsWith("/creator/") ? "cursor-pointer" : "cursor-default"}`}
+                                                        className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300"
                                                         onClick={() => {
                                                             const isCreator = !pathname.startsWith("/creator/");
                                                             if (isCreator && playerInstanceRef.current) {
@@ -564,22 +759,14 @@ export default function StreamView({
                                                             }
                                                         }}
                                                     >
-                                                        <div className="absolute inset-0 z-0">
-                                                            <Image
-                                                                src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
-                                                                alt="Video background"
-                                                                fill
-                                                                className="object-cover opacity-40 blur-sm"
-                                                            />
-                                                        </div>
                                                         <div className="relative z-10 flex flex-col items-center gap-4">
                                                             {!pathname.startsWith("/creator/") ? (
                                                                 <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
                                                                     <Play className="fill-white w-10 h-10 ml-1" />
                                                                 </div>
                                                             ) : (
-                                                                <div className="bg-blue-600/90 px-8 py-3 rounded-full border border-blue-400/50 backdrop-blur-md shadow-2xl">
-                                                                    <p className="text-xl font-bold tracking-widest uppercase text-white drop-shadow-md">Paused by Streamer</p>
+                                                                <div className="bg-blue-600/90 px-8 py-3 rounded-full border border-blue-400/50 shadow-2xl">
+                                                                    <p className="text-xl font-bold tracking-widest uppercase text-white">Paused by Streamer</p>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -588,33 +775,21 @@ export default function StreamView({
 
                                                 {pathname.startsWith("/creator/") && (
                                                     <>
-                                                        {/* Click-jacking protection for listeners */}
                                                         <div className="absolute inset-0 z-10 cursor-default" />
-                                                        {/* Custom Mute Control */}
                                                         <div className="absolute bottom-4 right-4 z-20">
                                                             <Button
                                                                 onClick={() => setIsMuted(!isMuted)}
                                                                 size="sm"
-                                                                className="bg-black/60 hover:bg-black/80 text-white border-white/20 backdrop-blur-sm"
+                                                                className="bg-black/60 hover:bg-black/80 text-white"
                                                             >
-                                                                {isMuted ? (
-                                                                    <span className="flex items-center gap-2">
-                                                                        <VolumeX className="h-4 w-4" /> Unmute
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="flex items-center gap-2">
-                                                                        <Volume2 className="h-4 w-4" /> Mute
-                                                                    </span>
-                                                                )}
+                                                                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                                                             </Button>
                                                         </div>
                                                     </>
                                                 )}
                                             </div>
                                             <div className="p-4 bg-gray-900 border-t border-gray-800">
-                                                <p className="text-xl font-semibold text-white truncate">
-                                                    {currentVideo.title}
-                                                </p>
+                                                <p className="text-xl font-semibold text-white truncate">{currentVideo.title}</p>
                                             </div>
                                         </div>
                                     ) : (
@@ -626,27 +801,20 @@ export default function StreamView({
                                                         alt={currentVideo.title}
                                                         fill
                                                         className="object-contain"
-                                                        sizes="(max-width: 1280px) 100vw, 1200px"
-                                                        priority={true}
+                                                        priority
                                                     />
                                                 ) : (
-                                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                                                        <p className="text-gray-500 text-lg">No image available</p>
-                                                    </div>
+                                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500">No Image</div>
                                                 )}
                                             </div>
                                             <div className="p-4 bg-gray-900 border-t border-gray-800 text-center">
-                                                <p className="text-xl font-semibold text-white truncate">
-                                                    {currentVideo.title}
-                                                </p>
+                                                <p className="text-xl font-semibold text-white truncate">{currentVideo.title}</p>
                                             </div>
                                         </div>
                                     )
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-20 text-gray-400 space-y-4">
-                                        <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center">
-                                            <Play className="w-10 h-10 opacity-20" />
-                                        </div>
+                                        <Play className="w-10 h-10 opacity-20" />
                                         <p className="text-lg">No video playing</p>
                                     </div>
                                 )}
@@ -658,85 +826,89 @@ export default function StreamView({
                                 <Button
                                     disabled={playNextLoader}
                                     onClick={playNext}
-                                    className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95"
+                                    className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                                 >
                                     <Play className="mr-2 h-5 w-5 fill-current" />
                                     {playNextLoader ? "Loading..." : "Play Next"}
                                 </Button>
-
                                 <Button
                                     onClick={stopQueue}
-                                    className="flex-1 h-12 text-white font-bold text-lg rounded-xl transition-all active:scale-95"
                                     variant="destructive"
+                                    className="flex-1 h-12 font-bold rounded-xl"
                                 >
                                     Stop Queue
                                 </Button>
                             </div>
                         )}
+
+                        <AnimatePresence>
+                            {activityLogs.length > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="p-4 bg-gray-900/50 rounded-2xl border border-gray-800 backdrop-blur-sm"
+                                >
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Activity Log</h4>
+                                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {activityLogs.map((log) => (
+                                            <div key={log.timestamp} className="text-sm flex items-start gap-3">
+                                                <span className={log.type === "success" ? "text-green-500" : "text-red-500"}>
+                                                    {log.type === "success" ? "✓" : "✕"}
+                                                </span>
+                                                <span className="text-gray-400">{log.message}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
 
-                    {/* Right Column - Sidebar (Add Song + Upcoming Songs) */}
                     <div className="lg:col-span-1 space-y-8">
-                        {/* Add Song Section */}
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-white">Add to Queue</h2>
                             <div className="space-y-4">
-                                <div className="relative group">
-                                    <Input
-                                        value={videoLink}
-                                        onChange={(e) => setVideoLink(e.target.value)}
-                                        placeholder="YouTube Link"
-                                        className="w-full h-12 bg-gray-900 border-gray-800 text-white pl-4 pr-12 rounded-xl focus:ring-2 focus:ring-blue-600/50 transition-all"
-                                    />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors">
-                                        <Play className="w-5 h-5" />
-                                    </div>
-                                </div>
+                                <Input
+                                    value={videoLink}
+                                    onChange={(e) => setVideoLink(e.target.value)}
+                                    placeholder="YouTube Video or Playlist Link"
+                                    className="w-full h-12 bg-gray-900 border-gray-800 text-white rounded-xl"
+                                />
                                 <Button
                                     onClick={handleSubmit}
-                                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-600/20"
                                     disabled={loading}
+                                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 font-bold rounded-xl"
                                 >
                                     {loading ? "Adding..." : "Add to Queue"}
                                 </Button>
+                                {videoLink && videoLink.match(YT_REGEX) && !loading && (
+                                    <div className="rounded-xl overflow-hidden border border-gray-800">
+                                        <LiteYouTubeEmbed
+                                            title="Youtube Video Preview"
+                                            id={videoLink.match(YT_REGEX)![1]}
+                                        />
+                                    </div>
+                                )}
                             </div>
-
-                            {/* YouTube Preview */}
-                            {videoLink && videoLink.match(YT_REGEX) && !loading && (
-                                <div className="rounded-xl overflow-hidden border border-gray-800 shadow-xl">
-                                    <LiteYouTubeEmbed
-                                        title="Youtube Video Preview"
-                                        id={videoLink.match(YT_REGEX)![1]}
-                                    />
-                                </div>
-                            )}
                         </div>
 
-                        {/* Upcoming Songs Section */}
                         <div className="space-y-4">
                             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                                Upcoming
-                                <span className="text-sm font-normal text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">{queue.length}</span>
+                                Upcoming <span className="text-sm font-normal text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">{queue.length}</span>
                             </h2>
                             {queue.length <= 0 ? (
                                 <Card className="bg-gray-900/30 border-gray-800 border-dashed text-white">
-                                    <CardContent className="p-8 flex flex-col items-center justify-center opacity-50">
-                                        <p className="text-gray-400 text-sm">Empty Queue</p>
-                                    </CardContent>
+                                    <CardContent className="p-8 flex items-center justify-center opacity-50">Empty Queue</CardContent>
                                 </Card>
                             ) : (
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                                     {queue.map((video) => (
-                                        <Card key={video.id} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors group">
+                                        <Card key={video.id} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
                                             <CardContent className="p-3 flex items-center gap-4">
                                                 <div className="w-20 h-12 relative flex-shrink-0">
                                                     {video.extractedId ? (
-                                                        <Image
-                                                            src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`}
-                                                            alt={video.title}
-                                                            fill
-                                                            className="rounded object-cover"
-                                                        />
+                                                        <Image src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`} alt={video.title} fill className="rounded object-cover" />
                                                     ) : (
                                                         <div className="w-full h-full bg-gray-800 rounded" />
                                                     )}
@@ -744,18 +916,12 @@ export default function StreamView({
                                                 <div className="flex-1 min-w-0">
                                                     <h3 className="font-semibold text-white truncate text-xs">{video.title}</h3>
                                                 </div>
-                                                <div className="flex flex-col items-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleVote(video.id, !video.haveUpvoted)}
-                                                        className={`h-8 px-2 transition-all ${video.haveUpvoted ? "text-blue-500" : "text-gray-400"}`}
-                                                    >
-                                                        {video.haveUpvoted ? (
-                                                            <ChevronDown className="h-4 w-4" />
-                                                        ) : (
-                                                            <ChevronUp className="h-4 w-4" />
-                                                        )}
+                                                <div className="flex items-center gap-1">
+                                                    {(video.addedById === currentUserId || creatorId === currentUserId) && (
+                                                        <Button variant="ghost" size="sm" onClick={() => handleRemove(video.id)} className="h-8 w-8 p-0 text-gray-500 hover:text-red-500"><Trash2 className="h-4 w-4" /></Button>
+                                                    )}
+                                                    <Button variant="ghost" size="sm" onClick={() => handleVote(video.id, !video.haveUpvoted)} className={`h-8 px-2 ${video.haveUpvoted ? "text-blue-500" : "text-gray-400"}`}>
+                                                        {video.haveUpvoted ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                                                         <span className="ml-1 text-xs font-bold">{video.upvotes}</span>
                                                     </Button>
                                                 </div>
@@ -769,19 +935,44 @@ export default function StreamView({
                 </div>
             </div>
 
-            {/* Toasts */}
-            <ToastContainer
-                position="top-right"
-                autoClose={3000}
-                hideProgressBar={false}
-                newestOnTop={false}
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-                theme="dark"
-            />
+            <ToastContainer position="top-right" autoClose={3000} theme="dark" />
+
+            <AnimatePresence>
+                {isPlaylistModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+                        >
+                            <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-bold text-white truncate max-w-md">{playlistTitle}</h2>
+                                    <p className="text-sm text-gray-400">{playlistVideos.length} videos found</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <Button onClick={handleAddAllFromPlaylist} className="bg-blue-600 font-bold rounded-xl"><ListPlus className="w-4 h-4 mr-2" /> Add All</Button>
+                                    <button onClick={() => setIsPlaylistModalOpen(false)} className="p-2 hover:bg-gray-800 rounded-full text-gray-400"><X className="w-6 h-6" /></button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                                {playlistVideos.map((video: any) => (
+                                    <div key={video.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-gray-800 hover:bg-white/10 transition-all">
+                                        <div className="w-24 h-14 relative flex-shrink-0">
+                                            <Image src={video.thumbnail} alt={video.title} fill className="rounded-lg object-cover" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-semibold text-white text-sm line-clamp-2">{video.title}</h4>
+                                        </div>
+                                        <Button size="sm" variant="ghost" onClick={() => handleAddFromPlaylist(video)} className="h-10 w-10 p-0 rounded-full text-gray-400"><Plus className="w-5 h-5" /></Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
