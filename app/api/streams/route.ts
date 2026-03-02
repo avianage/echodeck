@@ -46,10 +46,10 @@ export async function POST(req: NextRequest) {
             if (!res || !res.thumbnail) {
                 throw new Error("Invalid response from YouTube API");
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error(`❌ YoutubeSearchApi.GetVideoDetails failed for ${extractedId}:`, e);
             return NextResponse.json({
-                message: `Failed to fetch video details: ${e.message || "Timeout or API error"}. Video skipped.`
+                message: `Failed to fetch video details: ${e instanceof Error ? e.message : "Timeout or API error"}. Video skipped.`
             }, {
                 status: 400
             });
@@ -202,6 +202,7 @@ export async function GET(req: NextRequest) {
         ]);
 
         return NextResponse.json({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             streams: streams.map(({ _count, ...rest }: any) => ({
                 ...rest,
                 upvotes: _count.upvotes,
@@ -210,11 +211,11 @@ export async function GET(req: NextRequest) {
             activeStream,
             currentUserId: user.id
         });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("❌ GET /api/streams failed:", e);
         return NextResponse.json({
             message: "Internal server error",
-            error: e.message
+            error: e instanceof Error ? e.message : "Unknown error"
         }, {
             status: 500
         });

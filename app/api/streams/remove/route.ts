@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ message: "Stream removed successfully" });
-    } catch (e) {
+    } catch {
         return NextResponse.json({ message: "Error removing stream" }, { status: 500 });
     }
 }

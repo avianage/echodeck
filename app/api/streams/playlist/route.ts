@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-// @ts-ignore
+// @ts-expect-error No types available
 import YouTubeSearchApi from "youtube-search-api";
 import { z } from "zod";
 
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const videos = data.items.map((item: any) => ({
             id: item.id,
             title: item.title,

@@ -65,7 +65,7 @@ export default function StreamView({
     const addLog = (type: "success" | "error", message: string) => {
         setActivityLogs(prev => [{ type, message, timestamp: Date.now() }, ...prev].slice(0, 10));
     };
-    const [playlistErrors, setPlaylistErrors] = useState<{ title: string, reason: string }[]>([]);
+
 
     const videoPlayerRef = useRef<HTMLDivElement | null>(null);
     const playerInstanceRef = useRef<any>(null);
@@ -269,7 +269,7 @@ export default function StreamView({
 
                 // Synchronization: Only creator broadcasts
                 if (isCreator && playerInstanceRef.current) {
-                    const currentTime = await playerInstanceRef.current.getCurrentTime();
+
                     let type: "play" | "pause" = "pause";
 
                     if (event.data === 1) {
@@ -376,7 +376,7 @@ export default function StreamView({
                 setPlaylistVideos(data.videos);
                 setPlaylistTitle(data.title);
                 setIsPlaylistModalOpen(true);
-            } catch (err) {
+            } catch {
                 toast.error("Could not load playlist. Make sure it's public.");
             } finally {
                 setLoading(false);
@@ -433,7 +433,7 @@ export default function StreamView({
             toast.success(`Added ${video.title}`);
             addLog("success", `Added from playlist: ${video.title}`);
             refreshStreams();
-        } catch (err) {
+        } catch {
             toast.error("Error adding video");
             addLog("error", `Error adding video: ${video.title}`);
         }
