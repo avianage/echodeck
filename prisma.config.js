@@ -1,4 +1,8 @@
-require('dotenv').config()
+try {
+  require('dotenv').config()
+} catch (e) {
+  // dotenv is optional (not present in production standalone builds)
+}
 
 module.exports = {
   datasource: {
