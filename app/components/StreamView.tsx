@@ -498,130 +498,34 @@ export default function StreamView({
 
     return (
 
-        <div className="flex min-h-screen flex-col  bg-gray-950  px-8 md:px-20 pt-6 text-white">
+        <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 text-white overflow-x-hidden">
             <div className="mb-8">
                 <Appbar />
             </div>
-            {/* Main Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-8">
-                {/* Left Column - Upcoming Songs */}
-                <div>
-                    <h2 className="text-2xl font-semibold mb-4">Upcoming Songs</h2>
-                    {queue.length <= 0 ? (
-                        <Card className="bg-gray-900 border-gray-800 text-white">
-                            <CardContent className="p-4">
-                                <p className="text-gray-300">No songs in queue.</p>
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        <div className="space-y-4">
-                            {queue.map((video) => (
-                                <Card key={video.id} className="bg-white/10 text-white">
-                                    <CardContent className="p-4 flex items-center gap-4">
-                                        <div className="w-24 h-16 relative">
-                                            {video.extractedId ? (
-                                                <Image
-                                                    src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
-                                                    alt={video.title}
-                                                    fill
-                                                    className="rounded object-cover"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full bg-gray-800 rounded" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1">
-                                            <h3 className="font-bold">{video.title}</h3>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() =>
-                                                    handleVote(video.id, !video.haveUpvoted)
-                                                }
-                                                className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-                                            >
-                                                {video.haveUpvoted ? (
-                                                    <ChevronDown key={`down-${video.id}`} className="h-4 w-4" />
-                                                ) : (
-                                                    <ChevronUp key={`up-${video.id}`} className="h-4 w-4" />
-                                                )}
-                                                <span>{video.upvotes}</span>
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </div>
 
-
-                {/* Right Column - Add Song & Current Video */}
-                <div className="space-y-6">
-                    {/* Add to Queue */}
-                    <div>
-                        {/* Top row: Add to Queue + Share button */}
-                        <div className="flex justify-between items-center mb-4">
-                            <p className="text-2xl font-medium">Add to Queue</p>
-                            <div className="flex gap-2">
-
-                                <Button
-                                    onClick={handleShare}
-                                    variant="default"
-                                    className=" bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow"
-                                >
-                                    <Share2 className="w-4 h-4 mr-2" /> Share
-                                </Button>
-                            </div>
+            <div className="max-w-7xl mx-auto w-full">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Left Column - Now Playing (2/3 width) */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-3xl font-bold text-white flex items-center gap-2">
+                                Now Playing
+                            </h2>
+                            <Button
+                                onClick={handleShare}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all duration-300 shadow-lg shadow-blue-500/20 active:scale-95"
+                            >
+                                <Share2 className="w-4 h-4 mr-2" /> Share
+                            </Button>
                         </div>
 
-                        {/* Input + Add button row */}
-                        <div className="flex flex-col">
-                            <div className="mb-4">
-                                <Input
-                                    value={videoLink}
-                                    onChange={(e) => setVideoLink(e.target.value)}
-                                    placeholder="Paste YouTube link here"
-                                    className="w-full bg-gray-900 border-gray-800 text-white"
-                                />
-                            </div>
-                            <div>
-                                <Button
-                                    onClick={handleSubmit}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                    type="submit"
-                                    disabled={loading}
-                                >
-                                    {loading ? "Loading..." : "Add to Queue"}
-                                </Button>
-                            </div>
-                        </div>
-
-
-
-                    </div>
-
-
-                    {/* YouTube Preview */}
-                    {videoLink && videoLink.match(YT_REGEX) && !loading && (
-                        <LiteYouTubeEmbed
-                            title="Youtube Video"
-                            id={videoLink.match(YT_REGEX)![1]}
-                        />
-                    )}
-
-                    {/* Current Video */}
-                    <div className="relative">
-                        <h2 className="text-2xl text-white mb-2">Now Playing</h2>
-                        <Card className="bg-gray-900 border-gray-800 overflow-hidden">
-                            <CardContent className="p-4 relative">
+                        <Card className="bg-gray-900/50 border-gray-800 overflow-hidden backdrop-blur-sm shadow-2xl">
+                            <CardContent className="p-0 relative">
                                 {currentVideo ? (
                                     playVideo ? (
                                         <div className="w-full relative">
                                             <div className="relative">
-                                                <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] bg-black rounded-lg" />
+                                                <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] md:min-h-[450px] bg-black" />
 
                                                 {/* Go Live Overlay for Listeners */}
                                                 {pathname.startsWith("/creator/") && !isJoined && (
@@ -707,52 +611,62 @@ export default function StreamView({
                                                     </>
                                                 )}
                                             </div>
-                                            <p className="mt-2 text-center font-semibold text-white">
-                                                {currentVideo.title}
-                                            </p>
+                                            <div className="p-4 bg-gray-900 border-t border-gray-800">
+                                                <p className="text-xl font-semibold text-white truncate">
+                                                    {currentVideo.title}
+                                                </p>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="w-full">
-                                            <div className="relative w-full h-72">
+                                            <div className="relative w-full aspect-video md:h-[450px]">
                                                 {currentVideo.bigImg ? (
                                                     <Image
                                                         src={currentVideo.bigImg}
                                                         alt={currentVideo.title}
                                                         fill
-                                                        className="object-contain rounded-md"
-                                                        sizes="(max-width: 768px) 100vw, 700px"
+                                                        className="object-contain"
+                                                        sizes="(max-width: 1280px) 100vw, 1200px"
                                                         priority={true}
                                                     />
                                                 ) : (
-                                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center rounded-md">
-                                                        <p className="text-gray-500">No image available</p>
+                                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                                        <p className="text-gray-500 text-lg">No image available</p>
                                                     </div>
                                                 )}
                                             </div>
-                                            <p className="mt-2 text-center font-semibold text-white">
-                                                {currentVideo.title}
-                                            </p>
+                                            <div className="p-4 bg-gray-900 border-t border-gray-800 text-center">
+                                                <p className="text-xl font-semibold text-white truncate">
+                                                    {currentVideo.title}
+                                                </p>
+                                            </div>
                                         </div>
                                     )
                                 ) : (
-                                    <p className="text-center py-8 text-gray-400">No video playing</p>
+                                    <div className="flex flex-col items-center justify-center py-20 text-gray-400 space-y-4">
+                                        <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center">
+                                            <Play className="w-10 h-10 opacity-20" />
+                                        </div>
+                                        <p className="text-lg">No video playing</p>
+                                    </div>
                                 )}
                             </CardContent>
                         </Card>
+
                         {!pathname.startsWith("/creator/") && (
-                            <div className="flex gap-4 mt-4">
+                            <div className="flex gap-4">
                                 <Button
                                     disabled={playNextLoader}
                                     onClick={playNext}
-                                    className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                                    className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95"
                                 >
-                                    <Play className="mr-2 h-4 w-4" />
+                                    <Play className="mr-2 h-5 w-5 fill-current" />
                                     {playNextLoader ? "Loading..." : "Play Next"}
                                 </Button>
 
                                 <Button
                                     onClick={stopQueue}
-                                    className="w-full mt-4 text-white"
+                                    className="flex-1 h-12 text-white font-bold text-lg rounded-xl transition-all active:scale-95"
                                     variant="destructive"
                                 >
                                     Stop Queue
@@ -761,42 +675,97 @@ export default function StreamView({
                         )}
                     </div>
 
-                    {/* Recommendations Section - Commented for Microservice Migration */}
-                    {/* 
-                    {recommendations.length > 0 && (
-                        <div className="mt-8">
-                            <h2 className="text-2xl text-white mb-4 font-medium">Recommended for You</h2>
-                            <div className="grid grid-cols-1 gap-4">
-                                {recommendations.map((rec) => (
-                                    <Card key={rec.id} className="bg-white/5 border-gray-800 hover:bg-white/10 transition-colors">
-                                        <CardContent className="p-3 flex items-center gap-4">
-                                            <div className="w-20 h-12 relative flex-shrink-0">
-                                                <Image
-                                                    src={rec.thumbnail}
-                                                    alt={rec.title}
-                                                    fill
-                                                    className="rounded object-cover"
-                                                />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-semibold text-sm truncate text-white">{rec.title}</h3>
-                                            </div>
-                                            <Button
-                                                variant="default"
-                                                size="sm"
-                                                onClick={() => handleAddRecommendation(rec)}
-                                                disabled={loading}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm px-4"
-                                            >
-                                                Add
-                                            </Button>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                    {/* Right Column - Sidebar (Add Song + Upcoming Songs) */}
+                    <div className="lg:col-span-1 space-y-8">
+                        {/* Add Song Section */}
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-bold text-white">Add to Queue</h2>
+                            <div className="space-y-4">
+                                <div className="relative group">
+                                    <Input
+                                        value={videoLink}
+                                        onChange={(e) => setVideoLink(e.target.value)}
+                                        placeholder="YouTube Link"
+                                        className="w-full h-12 bg-gray-900 border-gray-800 text-white pl-4 pr-12 rounded-xl focus:ring-2 focus:ring-blue-600/50 transition-all"
+                                    />
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors">
+                                        <Play className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <Button
+                                    onClick={handleSubmit}
+                                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-600/20"
+                                    disabled={loading}
+                                >
+                                    {loading ? "Adding..." : "Add to Queue"}
+                                </Button>
                             </div>
+
+                            {/* YouTube Preview */}
+                            {videoLink && videoLink.match(YT_REGEX) && !loading && (
+                                <div className="rounded-xl overflow-hidden border border-gray-800 shadow-xl">
+                                    <LiteYouTubeEmbed
+                                        title="Youtube Video Preview"
+                                        id={videoLink.match(YT_REGEX)![1]}
+                                    />
+                                </div>
+                            )}
                         </div>
-                    )}
-                    */}
+
+                        {/* Upcoming Songs Section */}
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                                Upcoming
+                                <span className="text-sm font-normal text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">{queue.length}</span>
+                            </h2>
+                            {queue.length <= 0 ? (
+                                <Card className="bg-gray-900/30 border-gray-800 border-dashed text-white">
+                                    <CardContent className="p-8 flex flex-col items-center justify-center opacity-50">
+                                        <p className="text-gray-400 text-sm">Empty Queue</p>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {queue.map((video) => (
+                                        <Card key={video.id} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors group">
+                                            <CardContent className="p-3 flex items-center gap-4">
+                                                <div className="w-20 h-12 relative flex-shrink-0">
+                                                    {video.extractedId ? (
+                                                        <Image
+                                                            src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`}
+                                                            alt={video.title}
+                                                            fill
+                                                            className="rounded object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full bg-gray-800 rounded" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-semibold text-white truncate text-xs">{video.title}</h3>
+                                                </div>
+                                                <div className="flex flex-col items-center">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleVote(video.id, !video.haveUpvoted)}
+                                                        className={`h-8 px-2 transition-all ${video.haveUpvoted ? "text-blue-500" : "text-gray-400"}`}
+                                                    >
+                                                        {video.haveUpvoted ? (
+                                                            <ChevronDown className="h-4 w-4" />
+                                                        ) : (
+                                                            <ChevronUp className="h-4 w-4" />
+                                                        )}
+                                                        <span className="ml-1 text-xs font-bold">{video.upvotes}</span>
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
 
