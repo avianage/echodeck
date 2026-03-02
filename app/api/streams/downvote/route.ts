@@ -2,6 +2,7 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { authOptions } from "@/app/lib/auth";
 
 const DownvoteSchema = z.object({
     streamId: z.string()
@@ -9,7 +10,7 @@ const DownvoteSchema = z.object({
 
 export async function POST(req: NextRequest) {
     try {
-        const session = await getServerSession();
+        const session = await getServerSession(authOptions);
 
         if (!session?.user?.email) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });

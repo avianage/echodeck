@@ -6,7 +6,7 @@ export default async function Creator(props: { params: Promise<{ creatorId: stri
 
   return (
     <div>
-      <StreamView key={creatorId} creatorId={creatorId} playVideo={false} />
+      <StreamView key={creatorId} creatorId={creatorId} playVideo={true} />
     </div>
   );
 }

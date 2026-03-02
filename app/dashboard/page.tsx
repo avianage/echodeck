@@ -1,9 +1,37 @@
 "use client";
 
 import StreamView from "../components/StreamView";
+import { useSession } from "next-auth/react";
 
-const creatorId = "ff79778f-b1ec-4a5b-9ca5-9177db586af0"
+export default function Component() {
+    const { data: session, status } = useSession();
 
-export default function Component(){
-    return <StreamView key={creatorId} creatorId={creatorId} playVideo={true} />
+    if (status === "loading") {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-950 text-white">
+                Loading...
+            </div>
+        );
+    }
+
+    if (!session?.user) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-950 text-white">
+                Please sign in to view your dashboard.
+            </div>
+        );
+    }
+
+    // @ts-expect-error session.user.id is added in nextauth callback
+    const creatorId = session.user.id;
+
+    if (!creatorId) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-950 text-white">
+                Error: User ID not found.
+            </div>
+        );
+    }
+
+    return <StreamView key={creatorId} creatorId={creatorId} playVideo={true} />;
 }

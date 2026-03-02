@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronUp, ChevronDown, Play, Share2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Play } from "lucide-react";
 import Image from "next/image";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -16,6 +16,8 @@ import { YT_REGEX } from "@/app/lib/utils";
 import { Appbar } from "./Appbar";
 import YouTubePlayer from "youtube-player";
 import { usePathname } from "next/navigation";
+import { pusherClient } from "@/app/lib/pusher";
+import { Share2, Volume2, VolumeX } from "lucide-react";
 
 interface Video {
     id: string,
@@ -28,7 +30,8 @@ interface Video {
     active: string,
     userId: string,
     upvotes: number,
-    haveUpvoted: boolean
+    haveUpvoted: boolean,
+    playedTs: string | null
 }
 
 const REFRESH_INTERVAL_MS = 10 * 1000;
@@ -45,7 +48,10 @@ export default function StreamView({
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [loading, setLoading] = useState(false);
     const [playNextLoader, setPlayNextLoader] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const [lastSync, setLastSync] = useState<{ type: "play" | "pause", currentTime: number } | null>(null);
     const videoPlayerRef = useRef<HTMLDivElement | null>(null);
+    const playerInstanceRef = useRef<any>(null);
     const pathname = usePathname();
 
     async function refreshStreams() {
@@ -102,47 +108,164 @@ export default function StreamView({
     useEffect(() => {
         refreshStreams();
 
+        const channel = pusherClient.subscribe(creatorId);
+        channel.bind("stream-update", () => {
+            console.log("🚀 Real-time update received!");
+            refreshStreams();
+        });
+
+        channel.bind("player-sync", async (data: { type: "play" | "pause", currentTime: number }) => {
+            const isListener = pathname.startsWith("/creator/");
+            if (!isListener || !playerInstanceRef.current) return;
+
+            console.log("📡 Remote sync command:", data);
+            const player = playerInstanceRef.current;
+            const myTime = await player.getCurrentTime();
+
+            // Sync time if drift is too much or it's a play command
+            if (Math.abs(myTime - data.currentTime) > 2 || data.type === "play") {
+                player.seekTo(data.currentTime, true);
+            }
+
+            if (data.type === "play") {
+                player.playVideo();
+            } else {
+                player.pauseVideo();
+            }
+        });
+
         const interval = setInterval(() => {
             refreshStreams();
         }, REFRESH_INTERVAL_MS);
-
         return () => {
-            console.log("🧹 Clearing interval for creator:", creatorId);
+            console.log("🧹 Clearing interval & unsubscribing for creator:", creatorId);
             clearInterval(interval);
+            pusherClient.unsubscribe(creatorId);
         };
     }, [creatorId]);
+
+
+
+    useEffect(() => {
+        if (lastSync && playerInstanceRef.current) {
+            console.log("🎯 Applying last cached sync:", lastSync);
+            const player = playerInstanceRef.current;
+            player.seekTo(lastSync.currentTime, true);
+            if (lastSync.type === "play") {
+                player.playVideo().catch((e: any) => console.error("Cached Play failed:", e));
+            } else {
+                player.pauseVideo();
+            }
+            setLastSync(null); // Clear after applying
+        }
+    }, [lastSync]);
 
     useEffect(() => {
         if (!videoPlayerRef.current || !currentVideo?.extractedId) return;
 
-        const player = YouTubePlayer(videoPlayerRef.current);
+        // If listener, don't play until joined
+        // Removing the isJoined guard so it plays automatically
 
+
+        if (!playerInstanceRef.current) {
+            playerInstanceRef.current = YouTubePlayer(videoPlayerRef.current, {
+                playerVars: {
+                    controls: pathname.startsWith("/creator/") ? 0 : 1,
+                    disablekb: pathname.startsWith("/creator/") ? 1 : 0,
+                    rel: 0,
+                    modestbranding: 1
+                }
+            });
+
+            playerInstanceRef.current.on("stateChange", async (event: any) => {
+                const isCreator = !pathname.startsWith("/creator/");
+
+                if (event.data === 0) {
+                    playNext();
+                }
+
+                // Synchronization: Only creator broadcasts
+                if (isCreator && playerInstanceRef.current) {
+                    const currentTime = await playerInstanceRef.current.getCurrentTime();
+                    let type: "play" | "pause" = "pause";
+
+                    if (event.data === 1) type = "play"; // PLAYING
+                    if (event.data === 2) type = "pause"; // PAUSED
+
+                    if (event.data === 1 || event.data === 2) {
+                        console.log(`📤 Sending sync: ${type} at ${currentTime}s`);
+                        fetch("/api/streams/sync", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                creatorId,
+                                type,
+                                currentTime
+                            })
+                        }).then(r => {
+                            if (!r.ok) console.error("❌ Sync broadcast failed status:", r.status);
+                        }).catch(e => console.error("❌ Sync broadcast failed:", e));
+                    }
+                }
+            });
+        }
+
+        const player = playerInstanceRef.current;
         player.loadVideoById(currentVideo.extractedId);
 
-        player.playVideo().catch(err => {
+        // Sync logic for listeners
+        if (pathname.startsWith("/creator/") && currentVideo.playedTs) {
+            const playedAt = new Date(currentVideo.playedTs).getTime();
+            const now = new Date().getTime();
+            const offsetSeconds = (now - playedAt) / 1000;
+
+            if (offsetSeconds > 0) {
+                console.log(`📡 Syncing to offset: ${offsetSeconds}s`);
+                player.seekTo(offsetSeconds, true);
+            }
+        }
+
+        player.playVideo().catch((err: any) => {
             console.warn("Autoplay failed:", err);
         });
 
-        const eventHandler = (event: any) => {
-            if (event.data === 0) {
-                playNext();
+        return () => {
+            if (playerInstanceRef.current) {
+                // We only destroy if the component unmounts or creatorId changes
+                // But currentVideo change should just load next video
             }
         };
-
-        player.on("stateChange", eventHandler);
-
-        return () => {
-            player.destroy();
-        };
     }, [currentVideo]);
+
+    // Separate effect for mute/unmute
+    useEffect(() => {
+        if (playerInstanceRef.current) {
+            if (isMuted) {
+                playerInstanceRef.current.mute();
+            } else {
+                playerInstanceRef.current.unMute();
+            }
+        }
+    }, [isMuted]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (playerInstanceRef.current) {
+                playerInstanceRef.current.destroy();
+                playerInstanceRef.current = null;
+            }
+        };
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true);
         const res = await fetch("/api/streams/", {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                creatorId: "ff79778f-b1ec-4a5b-9ca5-9177db586af0",
+                creatorId: creatorId,
                 url: videoLink
             })
         })
@@ -169,6 +292,7 @@ export default function StreamView({
 
         fetch(`/api/streams/${isUpvote ? "upvote" : "downvote"}`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 streamId: id
             }),
@@ -206,6 +330,7 @@ export default function StreamView({
         try {
             const response = await fetch("/api/streams/clear", {
                 method: "POST",
+                headers: { "Content-Type": "application/json" }
             });
 
             if (!response.ok) {
@@ -229,7 +354,7 @@ export default function StreamView({
 
 
     const handleShare = () => {
-        const sharableLink = `${window.location.hostname}/creator/${creatorId}`;
+        const sharableLink = `${window.location.protocol}//${window.location.host}/creator/${creatorId}`;
         navigator.clipboard.writeText(sharableLink).then(() => {
             toast.success("Link Copied to Clipboard!", {
                 position: "top-right",
@@ -279,12 +404,16 @@ export default function StreamView({
                                 <Card key={video.id} className="bg-white/10 text-white">
                                     <CardContent className="p-4 flex items-center gap-4">
                                         <div className="w-24 h-16 relative">
-                                            <Image
-                                                src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
-                                                alt={video.title}
-                                                fill
-                                                className="rounded object-cover"
-                                            />
+                                            {video.extractedId ? (
+                                                <Image
+                                                    src={`https://img.youtube.com/vi/${video.extractedId}/0.jpg`}
+                                                    alt={video.title}
+                                                    fill
+                                                    className="rounded object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full bg-gray-800 rounded" />
+                                            )}
                                         </div>
                                         <div className="flex-1">
                                             <h3 className="font-bold">{video.title}</h3>
@@ -299,9 +428,9 @@ export default function StreamView({
                                                 className="flex items-center space-x-1 bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
                                             >
                                                 {video.haveUpvoted ? (
-                                                    <ChevronDown className="h-4 w-4" />
+                                                    <ChevronDown key={`down-${video.id}`} className="h-4 w-4" />
                                                 ) : (
-                                                    <ChevronUp className="h-4 w-4" />
+                                                    <ChevronUp key={`up-${video.id}`} className="h-4 w-4" />
                                                 )}
                                                 <span>{video.upvotes}</span>
                                             </Button>
@@ -321,13 +450,16 @@ export default function StreamView({
                         {/* Top row: Add to Queue + Share button */}
                         <div className="flex justify-between items-center mb-4">
                             <p className="text-2xl font-medium">Add to Queue</p>
-                            <Button
-                                onClick={handleShare}
-                                variant="default"
-                                className=" bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow"
-                            >
-                                <Share2 className="w-4 h-4 mr-2" /> Share
-                            </Button>
+                            <div className="flex gap-2">
+
+                                <Button
+                                    onClick={handleShare}
+                                    variant="default"
+                                    className=" bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow"
+                                >
+                                    <Share2 className="w-4 h-4 mr-2" /> Share
+                                </Button>
+                            </div>
                         </div>
 
                         {/* Input + Add button row */}
@@ -366,75 +498,92 @@ export default function StreamView({
                     )}
 
                     {/* Current Video */}
-                    <div>
+                    <div className="relative">
                         <h2 className="text-2xl text-white mb-2">Now Playing</h2>
-                        <Card className="bg-gray-900 border-gray-800">
-                            <CardContent className="p-4">
+                        <Card className="bg-gray-900 border-gray-800 overflow-hidden">
+                            <CardContent className="p-4 relative">
                                 {currentVideo ? (
                                     playVideo ? (
-                                        <div className="w-full">
+                                        <div className="w-full relative">
+                                            <div className="relative">
+                                                <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] bg-black rounded-lg" />
 
-                                            <div id="youtube-player" ref={videoPlayerRef} className="w-full" />
-                                            <p className="mt-2 text-center font-semibold text-white">
-                                                {currentVideo.title}
-                                            </p>
-
-                                        </div>
-                                        // <iframe
-                                        //     width={"100%"}
-                                        //     height={300}
-                                        //     src={`https://www.youtube.com/embed/${currentVideo.extractedId}?autoplay=1`}
-                                        //     allow="autoplay"
-                                        //     title="Current Video"
-                                        //     className="rounded"
-                                        // />
-                                    ) : (
-
-                                        <div className="w-full">
-                                            <div className="relative w-full h-72">
-                                                <Image
-                                                    src={currentVideo.bigImg}
-                                                    alt={currentVideo.title}
-                                                    fill
-                                                    className="object-contain rounded-md"
-                                                    sizes="(max-width: 768px) 100vw, 700px"
-                                                    priority={true}
-                                                />
+                                                {pathname.startsWith("/creator/") && (
+                                                    <>
+                                                        {/* Click-jacking protection for listeners */}
+                                                        <div className="absolute inset-0 z-10 cursor-default" />
+                                                        {/* Custom Mute Control */}
+                                                        <div className="absolute bottom-4 right-4 z-20">
+                                                            <Button
+                                                                onClick={() => setIsMuted(!isMuted)}
+                                                                size="sm"
+                                                                className="bg-black/60 hover:bg-black/80 text-white border-white/20 backdrop-blur-sm"
+                                                            >
+                                                                {isMuted ? (
+                                                                    <span className="flex items-center gap-2">
+                                                                        <VolumeX className="h-4 w-4" /> Unmute
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="flex items-center gap-2">
+                                                                        <Volume2 className="h-4 w-4" /> Mute
+                                                                    </span>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                             <p className="mt-2 text-center font-semibold text-white">
                                                 {currentVideo.title}
                                             </p>
                                         </div>
-
-
-
+                                    ) : (
+                                        <div className="w-full">
+                                            <div className="relative w-full h-72">
+                                                {currentVideo.bigImg ? (
+                                                    <Image
+                                                        src={currentVideo.bigImg}
+                                                        alt={currentVideo.title}
+                                                        fill
+                                                        className="object-contain rounded-md"
+                                                        sizes="(max-width: 768px) 100vw, 700px"
+                                                        priority={true}
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center rounded-md">
+                                                        <p className="text-gray-500">No image available</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-center font-semibold text-white">
+                                                {currentVideo.title}
+                                            </p>
+                                        </div>
                                     )
                                 ) : (
                                     <p className="text-center py-8 text-gray-400">No video playing</p>
                                 )}
                             </CardContent>
                         </Card>
-                        {!pathname.startsWith("/creator/") && playNext && (
-                            <>
-                                <div className="flex gap-4 mt-4">
-                                    <Button
-                                        disabled={playNextLoader}
-                                        onClick={playNext}
-                                        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                                    >
-                                        <Play className="mr-2 h-4 w-4" />
-                                        {playNextLoader ? "Loading..." : "Play Next"}
-                                    </Button>
+                        {!pathname.startsWith("/creator/") && (
+                            <div className="flex gap-4 mt-4">
+                                <Button
+                                    disabled={playNextLoader}
+                                    onClick={playNext}
+                                    className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                    <Play className="mr-2 h-4 w-4" />
+                                    {playNextLoader ? "Loading..." : "Play Next"}
+                                </Button>
 
-                                    <Button
-                                        onClick={stopQueue}
-                                        className="w-full mt-4 text-white"
-                                        variant="destructive"
-                                    >
-                                        Stop Queue
-                                    </Button>
-                                </div>
-                            </>
+                                <Button
+                                    onClick={stopQueue}
+                                    className="w-full mt-4 text-white"
+                                    variant="destructive"
+                                >
+                                    Stop Queue
+                                </Button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -455,5 +604,4 @@ export default function StreamView({
             />
         </div>
     );
-
 }

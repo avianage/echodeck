@@ -4,50 +4,60 @@ import { prismaClient } from "@/app/lib/db";
 // @ts-expect-error No Types available
 import youtubesearchapi from "youtube-search-api";
 import { YT_REGEX } from "@/app/lib/utils";
-import { getToken } from "next-auth/jwt";
 import { getServerSession } from "next-auth";
+import { pusherServer } from "@/app/lib/pusher";
+import { authOptions } from "@/app/lib/auth";
 
 const CreateStreamSchema = z.object({
     creatorId: z.string(),
-    url: z.string() 
+    url: z.string()
 })
 
 const MAX_QUEUE_LENGTH = 20;
 
 export async function POST(req: NextRequest) {
-    try {        
-        const data = CreateStreamSchema.parse(await req. json());
+    try {
+        const data = CreateStreamSchema.parse(await req.json());
         const isYt = data.url.match(YT_REGEX)
-        
+
         if (!isYt) {
             return NextResponse.json({
                 message: "Wrong URL format"
-            },{
+            }, {
                 status: 411
             })
         }
 
-        const extractedId = data.url.split("?v=")[1];
+        const match = data.url.match(YT_REGEX);
+        const extractedId = match ? match[1] : null;
+
+        if (!extractedId) {
+            return NextResponse.json({
+                message: "Could not extract video ID"
+            }, {
+                status: 411
+            })
+        }
 
         const res = await youtubesearchapi.GetVideoDetails(extractedId);
         const thumbnails = res.thumbnail.thumbnails;
-        thumbnails.sort((a: {width: number}, b: {width: number}) => a.width < b.width ? -1 : 1);
-        
-        const session = await getServerSession();
-        
-                if (!session?.user?.email) {
-                    return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
-                }
-        
-                const user = await prismaClient.user.findUnique({
-                    where: {
-                        email: session.user.email,
-                    },
-                });
-        
-                if (!user) {
-                    return NextResponse.json({ message: "User not found" }, { status: 403 });
-                }
+        thumbnails.sort((a: { width: number }, b: { width: number }) => a.width < b.width ? -1 : 1);
+
+        const session = await getServerSession(authOptions);
+
+        if (!session?.user?.email) {
+            return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
+        }
+
+        const user = await prismaClient.user.findUnique({
+            where: {
+                email: session.user.email,
+            },
+        });
+
+        if (!user) {
+            return NextResponse.json({ message: "User not found" }, { status: 403 });
+        }
 
         const existingActiveStream = await prismaClient.stream.count({
             where: {
@@ -55,7 +65,7 @@ export async function POST(req: NextRequest) {
             }
         })
 
-        if (existingActiveStream > MAX_QUEUE_LENGTH){
+        if (existingActiveStream > MAX_QUEUE_LENGTH) {
             return NextResponse.json({
                 message: "Stream Queue At limit"
             }, {
@@ -71,19 +81,23 @@ export async function POST(req: NextRequest) {
                 extractedId,
                 type: "Youtube",
                 title: res.title ?? "Cant Find Video",
-                smallImg: thumbnails.length > 1 ? thumbnails[thumbnails.length - 2].url : thumbnails[thumbnails.length - 1].url ?? "https://img.freepik.com/free-vector/oops-404-error-with-broken-robot-concept-illustration_114360-5529.jpg", 
-                bigImg:  thumbnails[thumbnails.length - 1].url ?? "https://img.freepik.com/free-vector/oops-404-error-with-broken-robot-concept-illustration_114360-5529.jpg"
-            }    
+                smallImg: thumbnails.length > 1 ? thumbnails[thumbnails.length - 2].url : thumbnails[thumbnails.length - 1].url ?? "https://img.freepik.com/free-vector/oops-404-error-with-broken-robot-concept-illustration_114360-5529.jpg",
+                bigImg: thumbnails[thumbnails.length - 1].url ?? "https://img.freepik.com/free-vector/oops-404-error-with-broken-robot-concept-illustration_114360-5529.jpg"
+            }
+        });
+
+        await pusherServer.trigger(data.creatorId, "stream-update", {
+            message: "New stream added"
         });
 
         return NextResponse.json({
             ...stream,
-            hasUpvoted: false,
+            haveUpvoted: false,
             upvotes: 0
 
         })
 
-    } catch(e) {
+    } catch (e) {
         return NextResponse.json({
             message: "Error while adding a Stream: " + e
         }, {
@@ -92,35 +106,33 @@ export async function POST(req: NextRequest) {
     }
 }
 
-const secret = process.env.NEXTAUTH_SECRET;
-
 export async function GET(req: NextRequest) {
     const creatorId = req.nextUrl.searchParams.get("creatorId");
-    const token = await getToken({ req, secret });
-    
-        if (!token || !token.email) {
-            return NextResponse.json({ 
-                message: "Unauthenticated" 
-            }, { 
-                status: 403 
-            });
-        }
-    
-        const user = await prismaClient.user.findFirst({
-            where: { 
-                email: token.email 
-            }
+    const session = await getServerSession(authOptions);
+
+    if (!session || !session.user?.email) {
+        return NextResponse.json({
+            message: "Unauthenticated"
+        }, {
+            status: 403
         });
-    
-        if (!user) {
-            return NextResponse.json({ 
-                message: "User not found" 
-            }, { 
-                status: 403 
-            });
+    }
+
+    const user = await prismaClient.user.findFirst({
+        where: {
+            email: session.user.email
         }
-    
-    
+    });
+
+    if (!user) {
+        return NextResponse.json({
+            message: "User not found"
+        }, {
+            status: 403
+        });
+    }
+
+
     if (!creatorId) {
         return NextResponse.json({
             message: "Error"
@@ -129,7 +141,7 @@ export async function GET(req: NextRequest) {
         })
     }
     const [streams, activeStream] = await Promise.all([await prismaClient.stream.findMany({
-        where: { 
+        where: {
             userId: creatorId,
             played: false
         },
@@ -141,7 +153,7 @@ export async function GET(req: NextRequest) {
             },
             upvotes: {
                 where: {
-                    userId: user.id    
+                    userId: user.id
                 }
             }
         }
@@ -149,13 +161,13 @@ export async function GET(req: NextRequest) {
         where: {
             userId: creatorId
         },
-        include:{
+        include: {
             stream: true
         }
     })])
 
-    return NextResponse.json({ 
-        streams: streams.map(({_count, ...rest}) => ({
+    return NextResponse.json({
+        streams: streams.map(({ _count, ...rest }) => ({
             ...rest,
             upvotes: _count.upvotes,
             haveUpvoted: rest.upvotes.length ? true : false

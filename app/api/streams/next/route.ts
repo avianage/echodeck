@@ -1,9 +1,10 @@
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { authOptions } from "@/app/lib/auth";
 
 export async function GET() {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
 
     if (!session) {
         console.warn("No session found");
