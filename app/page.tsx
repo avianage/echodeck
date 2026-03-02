@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { LucideIcon, PlayCircle, Users, Radio, Headphones, Sparkles, MessageSquare } from "lucide-react";
 import { Appbar } from "./components/Appbar";
 import { signIn } from "next-auth/react";
+import Image from "next/image";
 import { Redirect } from "./components/Redirect";
 import { motion } from "framer-motion";
 
@@ -46,12 +47,6 @@ export default function LandingPage() {
               onClick={() => signIn()}
             >
               Start Your Party
-            </Button>
-            <Button
-              variant="outline"
-              className="border-gray-800 text-white hover:bg-gray-900 h-14 px-10 text-lg rounded-full transition-all"
-            >
-              See how it works
             </Button>
           </div>
         </motion.div>
@@ -139,11 +134,14 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-white/5 px-8 md:px-20 py-12 text-center sm:text-left">
+      <footer className="mt-auto border-t border-white/5 px-8 md:px-20 py-12">
         <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-          <div>
-            <div className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500 mb-2">EchoDeck</div>
-            <p className="text-gray-500 text-sm max-w-xs">Building the future of social streaming for creators and friends everywhere.</p>
+          <div className="flex flex-col items-center md:items-start">
+            <div className="flex items-center gap-2 mb-2">
+              <Image src="/logo.png" alt="EchoDeck Logo" width={32} height={32} className="rounded-lg shadow-lg" />
+              <div className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">EchoDeck</div>
+            </div>
+            <p className="text-gray-500 text-sm max-w-xs text-center md:text-left">Building the future of social streaming for creators and friends everywhere.</p>
           </div>
           <nav className="flex gap-8">
             <Link href="#" className="text-sm text-gray-500 hover:text-white transition-colors">Terms</Link>
@@ -152,10 +150,10 @@ export default function LandingPage() {
           </nav>
         </div>
         <div className="mt-12 pt-8 border-t border-white/5 text-center text-xs text-gray-600">
-          © 2025 EchoDeck. Crafted with ❤️ for the streaming community.
+          © {new Date().getFullYear()} EchoDeck. Crafted with ❤️ for the streaming community.
         </div>
       </footer>
-    </div>
+    </div >
   );
 }
 

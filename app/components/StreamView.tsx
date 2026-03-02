@@ -50,6 +50,11 @@ export default function StreamView({
     const [playNextLoader, setPlayNextLoader] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [lastSync, setLastSync] = useState<{ type: "play" | "pause", currentTime: number } | null>(null);
+    // const [recommendations, setRecommendations] = useState<any[]>([]);
+    const [isPaused, setIsPaused] = useState(false);
+    const [isJoined, setIsJoined] = useState(false);
+    const [isPlayerReady, setIsPlayerReady] = useState(false);
+
     const videoPlayerRef = useRef<HTMLDivElement | null>(null);
     const playerInstanceRef = useRef<any>(null);
     const pathname = usePathname();
@@ -118,6 +123,13 @@ export default function StreamView({
             const isListener = pathname.startsWith("/creator/");
             if (!isListener || !playerInstanceRef.current) return;
 
+            // If listener hasn't joined yet, just cache the sync
+            if (!isJoined) {
+                console.log("📥 Caching sync until join:", data);
+                setLastSync(data);
+                return;
+            }
+
             console.log("📡 Remote sync command:", data);
             const player = playerInstanceRef.current;
             const myTime = await player.getCurrentTime();
@@ -129,9 +141,32 @@ export default function StreamView({
 
             if (data.type === "play") {
                 player.playVideo();
+                setIsPaused(false);
             } else {
                 player.pauseVideo();
+                setIsPaused(true);
             }
+        });
+
+        channel.bind("request-sync", async () => {
+            const isCreator = !pathname.startsWith("/creator/");
+            if (!isCreator || !playerInstanceRef.current) return;
+
+            console.log("📥 Sync requested by listener, broadcasting current state...");
+            const player = playerInstanceRef.current;
+            const currentTime = await player.getCurrentTime();
+            const state = await player.getPlayerState();
+            const type = state === 1 ? "play" : "pause";
+
+            fetch("/api/streams/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    creatorId,
+                    type,
+                    currentTime
+                })
+            });
         });
 
         const interval = setInterval(() => {
@@ -140,9 +175,22 @@ export default function StreamView({
         return () => {
             console.log("🧹 Clearing interval & unsubscribing for creator:", creatorId);
             clearInterval(interval);
-            pusherClient.unsubscribe(creatorId);
         };
     }, [creatorId]);
+
+    // useEffect(() => {
+    //     if (currentVideo?.title) {
+    //         fetch(`/api/streams/recommendations?videoTitle=${encodeURIComponent(currentVideo.title)}&videoId=${currentVideo.extractedId}`)
+    //             .then(res => res.json())
+    //             .then(data => {
+    //                 if (data.recommendations) {
+    //                     setRecommendations(data.recommendations);
+    //                 }
+    //             })
+    //             .catch(err => console.error("Error fetching recommendations:", err));
+    //     }
+    // }, [currentVideo?.id]);
+
 
 
 
@@ -153,8 +201,10 @@ export default function StreamView({
             player.seekTo(lastSync.currentTime, true);
             if (lastSync.type === "play") {
                 player.playVideo().catch((e: any) => console.error("Cached Play failed:", e));
+                setIsPaused(false);
             } else {
                 player.pauseVideo();
+                setIsPaused(true);
             }
             setLastSync(null); // Clear after applying
         }
@@ -177,6 +227,11 @@ export default function StreamView({
                 }
             });
 
+            playerInstanceRef.current.on("ready", () => {
+                console.log("✅ YouTube Player Ready");
+                setIsPlayerReady(true);
+            });
+
             playerInstanceRef.current.on("stateChange", async (event: any) => {
                 const isCreator = !pathname.startsWith("/creator/");
 
@@ -189,8 +244,14 @@ export default function StreamView({
                     const currentTime = await playerInstanceRef.current.getCurrentTime();
                     let type: "play" | "pause" = "pause";
 
-                    if (event.data === 1) type = "play"; // PLAYING
-                    if (event.data === 2) type = "pause"; // PAUSED
+                    if (event.data === 1) {
+                        type = "play"; // PLAYING
+                        setIsPaused(false);
+                    }
+                    if (event.data === 2) {
+                        type = "pause"; // PAUSED
+                        setIsPaused(true);
+                    }
 
                     if (event.data === 1 || event.data === 2) {
                         console.log(`📤 Sending sync: ${type} at ${currentTime}s`);
@@ -206,6 +267,10 @@ export default function StreamView({
                             if (!r.ok) console.error("❌ Sync broadcast failed status:", r.status);
                         }).catch(e => console.error("❌ Sync broadcast failed:", e));
                     }
+                } else if (pathname.startsWith("/creator/")) {
+                    // For listener, just track state locally for overlay
+                    if (event.data === 1) setIsPaused(false);
+                    if (event.data === 2) setIsPaused(true);
                 }
             });
         }
@@ -213,8 +278,10 @@ export default function StreamView({
         const player = playerInstanceRef.current;
         player.loadVideoById(currentVideo.extractedId);
 
-        // Sync logic for listeners
-        if (pathname.startsWith("/creator/") && currentVideo.playedTs) {
+        const isListener = pathname.startsWith("/creator/");
+
+        // Sync logic for listeners - ONLY IF JOINED
+        if (isListener && isJoined && currentVideo.playedTs) {
             const playedAt = new Date(currentVideo.playedTs).getTime();
             const now = new Date().getTime();
             const offsetSeconds = (now - playedAt) / 1000;
@@ -225,9 +292,12 @@ export default function StreamView({
             }
         }
 
-        player.playVideo().catch((err: any) => {
-            console.warn("Autoplay failed:", err);
-        });
+        // Only auto-play if creator OR if listener has already joined
+        if (!isListener || isJoined) {
+            player.playVideo().catch((err: any) => {
+                console.warn("Autoplay failed:", err);
+            });
+        }
 
         return () => {
             if (playerInstanceRef.current) {
@@ -274,6 +344,26 @@ export default function StreamView({
         setLoading(false);
         setVideoLink('');
     };
+
+    // const handleAddRecommendation = async (recommendation: any) => {
+    //     try {
+    //         setLoading(true);
+    //         const videoUrl = `https://www.youtube.com/watch?v=${recommendation.id}`;
+    //         const res = await fetch("/api/streams/", {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             body: JSON.stringify({
+    //                 creatorId: creatorId,
+    //                 url: videoUrl
+    //             })
+    //         });
+    //         // ... handle response
+    //     } catch (err) {
+    //         console.error("Error adding recommendation:", err);
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
 
     const handleVote = (id: string, isUpvote: boolean) => {
         console.log("Voting for Stream ID:", id);
@@ -352,6 +442,31 @@ export default function StreamView({
         }
     };
 
+
+    const handleGoLive = async () => {
+        if (!playerInstanceRef.current) return;
+
+        setIsJoined(true);
+        const player = playerInstanceRef.current;
+
+        // Final sync attempt
+        if (lastSync) {
+            console.log("Applying final cached sync on join:", lastSync);
+            player.seekTo(lastSync.currentTime, true);
+            if (lastSync.type === "play") player.playVideo();
+            else player.pauseVideo();
+            setLastSync(null);
+        } else {
+            player.playVideo();
+        }
+
+        // Request an up-to-date sync from creator
+        fetch("/api/streams/sync/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ creatorId })
+        });
+    };
 
     const handleShare = () => {
         const sharableLink = `${window.location.protocol}//${window.location.host}/creator/${creatorId}`;
@@ -508,6 +623,65 @@ export default function StreamView({
                                             <div className="relative">
                                                 <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] bg-black rounded-lg" />
 
+                                                {/* Go Live Overlay for Listeners */}
+                                                {pathname.startsWith("/creator/") && !isJoined && (
+                                                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
+                                                        <div className="text-center space-y-6 max-w-sm px-6">
+                                                            <div className="relative">
+                                                                <div className="absolute -inset-4 bg-blue-600/20 blur-2xl rounded-full" />
+                                                                <Play className="w-16 h-16 text-blue-500 mx-auto relative z-10 animate-pulse" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <h3 className="text-2xl font-bold text-white">Ready to join?</h3>
+                                                                <p className="text-gray-400 text-sm">Click below to sync up with the streamer and start listening.</p>
+                                                            </div>
+                                                            <Button
+                                                                onClick={handleGoLive}
+                                                                disabled={!isPlayerReady}
+                                                                className={`w-full h-14 text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl ${isPlayerReady
+                                                                    ? "bg-blue-600 hover:bg-blue-700 text-white scale-105 hover:scale-110 shadow-blue-600/20"
+                                                                    : "bg-gray-800 text-gray-500 cursor-not-allowed"
+                                                                    }`}
+                                                            >
+                                                                {isPlayerReady ? "GO LIVE" : "LOADING VIDEO..."}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Custom Pause Overlay */}
+                                                {isPaused && currentVideo && (isJoined || !pathname.startsWith("/creator/")) && (
+                                                    <div
+                                                        className={`absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 ${isPaused ? "opacity-100" : "opacity-0"} ${!pathname.startsWith("/creator/") ? "cursor-pointer" : "cursor-default"}`}
+                                                        onClick={() => {
+                                                            const isCreator = !pathname.startsWith("/creator/");
+                                                            if (isCreator && playerInstanceRef.current) {
+                                                                playerInstanceRef.current.playVideo();
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="absolute inset-0 z-0">
+                                                            <Image
+                                                                src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
+                                                                alt="Video background"
+                                                                fill
+                                                                className="object-cover opacity-40 blur-sm"
+                                                            />
+                                                        </div>
+                                                        <div className="relative z-10 flex flex-col items-center gap-4">
+                                                            {!pathname.startsWith("/creator/") ? (
+                                                                <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
+                                                                    <Play className="fill-white w-10 h-10 ml-1" />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="bg-blue-600/90 px-8 py-3 rounded-full border border-blue-400/50 backdrop-blur-md shadow-2xl">
+                                                                    <p className="text-xl font-bold tracking-widest uppercase text-white drop-shadow-md">Paused by Streamer</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {pathname.startsWith("/creator/") && (
                                                     <>
                                                         {/* Click-jacking protection for listeners */}
@@ -586,6 +760,43 @@ export default function StreamView({
                             </div>
                         )}
                     </div>
+
+                    {/* Recommendations Section - Commented for Microservice Migration */}
+                    {/* 
+                    {recommendations.length > 0 && (
+                        <div className="mt-8">
+                            <h2 className="text-2xl text-white mb-4 font-medium">Recommended for You</h2>
+                            <div className="grid grid-cols-1 gap-4">
+                                {recommendations.map((rec) => (
+                                    <Card key={rec.id} className="bg-white/5 border-gray-800 hover:bg-white/10 transition-colors">
+                                        <CardContent className="p-3 flex items-center gap-4">
+                                            <div className="w-20 h-12 relative flex-shrink-0">
+                                                <Image
+                                                    src={rec.thumbnail}
+                                                    alt={rec.title}
+                                                    fill
+                                                    className="rounded object-cover"
+                                                />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-semibold text-sm truncate text-white">{rec.title}</h3>
+                                            </div>
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={() => handleAddRecommendation(rec)}
+                                                disabled={loading}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm px-4"
+                                            >
+                                                Add
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    */}
                 </div>
             </div>
 
