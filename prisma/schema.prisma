@@ -45,7 +45,11 @@ model CurrentStream {
   userId           String    @id
   streamId         String?   @unique
   stream           Stream?   @relation(fields: [streamId], references: [id])
+  currentTime      Float     @default(0)
+  isPaused         Boolean   @default(false)
+  updatedAt        DateTime  @updatedAt
 }
+
 
 
 model Upvote {
@@ -64,4 +68,5 @@ enum StreamType {
 
 enum Provider {
   Google
+  Spotify
 }

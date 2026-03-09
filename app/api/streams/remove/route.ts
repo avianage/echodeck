@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
-import { pusherServer } from "@/app/lib/pusher";
 
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -44,9 +43,6 @@ export async function POST(req: NextRequest) {
             where: { id: streamId }
         });
 
-        await pusherServer.trigger(stream.userId, "stream-update", {
-            message: "Stream removed"
-        });
 
         return NextResponse.json({ message: "Stream removed successfully" });
     } catch {

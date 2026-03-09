@@ -2,23 +2,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronUp, ChevronDown, Play } from "lucide-react";
-import Image from "next/image";
+import { Share2, Volume2, VolumeX, X, ListPlus, Plus, Trash2, ChevronUp, ChevronDown, Play, Music } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
-import { Share2, Volume2, VolumeX, X, ListPlus, Plus, Trash2 } from "lucide-react";
-import { PLAYLIST_REGEX, YT_REGEX } from "@/app/lib/utils";
+import { PLAYLIST_REGEX, SPOTIFY_PLAYLIST_REGEX, YT_REGEX, SPOTIFY_TRACK_REGEX } from "@/app/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { Appbar } from "./Appbar";
-import YouTubePlayer from "youtube-player";
+import ReactPlayer from "react-player/youtube";
 import { usePathname } from "next/navigation";
-import { pusherClient } from "@/app/lib/pusher";
 
 interface Video {
     id: string,
@@ -52,38 +49,43 @@ export default function StreamView({
     const [playNextLoader, setPlayNextLoader] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [lastSync, setLastSync] = useState<{ type: "play" | "pause", currentTime: number } | null>(null);
-    // const [recommendations, setRecommendations] = useState<any[]>([]);
     const [isPaused, setIsPaused] = useState(false);
+    const [playing, setPlaying] = useState(false);
     const [isJoined, setIsJoined] = useState(false);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
     const [playlistVideos, setPlaylistVideos] = useState<any[]>([]);
     const [playlistTitle, setPlaylistTitle] = useState("");
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
     const [activityLogs, setActivityLogs] = useState<{ type: "success" | "error", message: string, timestamp: number }[]>([]);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+
 
     const addLog = (type: "success" | "error", message: string) => {
         setActivityLogs(prev => [{ type, message, timestamp: Date.now() }, ...prev].slice(0, 10));
     };
 
-
-    const videoPlayerRef = useRef<HTMLDivElement | null>(null);
-    const playerInstanceRef = useRef<any>(null);
+    const reactPlayerRef = useRef<ReactPlayer | null>(null);
     const pathname = usePathname();
+    const isFixingRestrictedRef = useRef(false);
 
-    async function refreshStreams() {
+
+    const refreshStreams = useCallback(async () => {
         try {
-            console.log("Fetching streams...");
+            console.log("Fetching streams from API...");
             const res = await fetch(`/api/streams/?creatorId=${creatorId}`, {
                 method: "GET",
                 credentials: "include",
             });
             const json = await res.json();
             setQueue(json.streams.sort((a: any, b: any) => {
-                if (a.upvotes === b.upvotes) {
-                    return new Date(a.createdAt) > new Date(b.createdAt) ? 1 : -1;
+                if (a.upvotes !== b.upvotes) {
+                    return b.upvotes - a.upvotes;
                 }
-                return b.upvotes - a.upvotes;
+                return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
             }));
             setCurrentUserId(json.currentUserId);
 
@@ -101,7 +103,7 @@ export default function StreamView({
         } catch (error) {
             console.error("Error Fetching Stream: ", error)
         }
-    }
+    }, [creatorId]);
 
     useEffect(() => {
         console.log("🔵 StreamView mounted");
@@ -126,85 +128,66 @@ export default function StreamView({
     useEffect(() => {
         refreshStreams();
 
-        const channel = pusherClient.subscribe(creatorId);
-        channel.bind("stream-update", () => {
-            console.log("🚀 Real-time update received!");
-            refreshStreams();
-        });
+        // High-Frequency Heartbeat Sync System (Replaces Pusher)
+        const heartbeatInterval = setInterval(async () => {
+            const isCreator = !pathname.startsWith("/party/");
+            try {
+                if (isCreator) {
+                    // Streamer pushes state to DB
+                    if (reactPlayerRef.current) {
+                        const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                        await fetch("/api/streams/heartbeat", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                creatorId,
+                                currentTime,
+                                isPaused: !playing // Use actual state
+                            })
+                        });
+                    }
+                } else if (isJoined) {
+                    // Listener pulls state from DB
+                    const res = await fetch("/api/streams/heartbeat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ creatorId })
+                    });
+                    const data = await res.json();
 
-        channel.bind("player-sync", async (data: { type: "play" | "pause", currentTime: number }) => {
-            const isListener = pathname.startsWith("/creator/");
-            if (!isListener || !playerInstanceRef.current) return;
+                    if (data.currentTime !== undefined && reactPlayerRef.current) {
+                        const myTime = reactPlayerRef.current.getCurrentTime();
 
-            // If listener hasn't joined yet, just cache the sync
-            if (!isJoined) {
-                console.log("📥 Caching sync until join:", data);
-                setLastSync(data);
-                return;
-            }
+                        // Force seek if listener is > 2s off
+                        if (Math.abs(myTime - data.currentTime) > 2) {
+                            console.log(`📡 Forced sync: ${myTime} -> ${data.currentTime}`);
+                            reactPlayerRef.current.seekTo(data.currentTime, 'seconds');
+                        }
 
-            console.log("📡 Remote sync command:", data);
-            const player = playerInstanceRef.current;
-            const myTime = await player.getCurrentTime();
+                        // Sync Play/Pause
+                        if (playing === data.isPaused) { // If mismatch
+                            setPlaying(!data.isPaused);
+                        }
 
-            // Sync time if drift is too much or it's a play command
-            if (Math.abs(myTime - data.currentTime) > 2 || data.type === "play") {
-                player.seekTo(data.currentTime, true);
-            }
-
-            if (data.type === "play") {
-                player.playVideo();
-                setIsPaused(false);
-            } else {
-                player.pauseVideo();
-                setIsPaused(true);
-            }
-        });
-
-        channel.bind("queue-cleared", () => {
-            console.log("🚫 Queue cleared by creator, resetting state...");
-            if (playerInstanceRef.current) {
-                try {
-                    playerInstanceRef.current.destroy();
-                } catch (e) {
-                    console.error("Sync cleanup error:", e);
+                        // If song changed remotely, refresh
+                        if (data.stream && currentVideo?.id !== data.stream.id) {
+                            console.log("🎵 Song changed remotely, refreshing...");
+                            refreshStreams();
+                        }
+                    }
+                } else {
+                    // Even if not joined, refresh queue periodically
+                    refreshStreams();
                 }
-                playerInstanceRef.current = null;
+            } catch (err) {
+                console.error("Heartbeat failed:", err);
             }
-            setCurrentVideo(null);
-            setQueue([]);
-            toast.info("Stream ended by host");
-        });
+        }, 2000); // Check every 2s for "snappy" sync
 
-        channel.bind("request-sync", async () => {
-            const isCreator = !pathname.startsWith("/creator/");
-            if (!isCreator || !playerInstanceRef.current) return;
-
-            console.log("📥 Sync requested by listener, broadcasting current state...");
-            const player = playerInstanceRef.current;
-            const currentTime = (await player.getCurrentTime()) || 0;
-            const state = await player.getPlayerState();
-            const type = state === 1 ? "play" : "pause";
-
-            fetch("/api/streams/sync", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    creatorId,
-                    type,
-                    currentTime: typeof currentTime === 'number' ? currentTime : 0
-                })
-            });
-        });
-
-        const interval = setInterval(() => {
-            refreshStreams();
-        }, REFRESH_INTERVAL_MS);
         return () => {
-            console.log("🧹 Clearing interval & unsubscribing for creator:", creatorId);
-            clearInterval(interval);
+            clearInterval(heartbeatInterval);
         };
-    }, [creatorId]);
+    }, [creatorId, pathname, isJoined, playing, currentVideo, refreshStreams]);
 
     // useEffect(() => {
     //     if (currentVideo?.title) {
@@ -222,146 +205,111 @@ export default function StreamView({
 
 
 
+    // Apply cached sync (from Pusher) once player is ready
     useEffect(() => {
-        if (lastSync && playerInstanceRef.current) {
+        if (lastSync && reactPlayerRef.current) {
             console.log("🎯 Applying last cached sync:", lastSync);
-            const player = playerInstanceRef.current;
-            player.seekTo(lastSync.currentTime, true);
+            reactPlayerRef.current.seekTo(lastSync.currentTime, 'seconds');
             if (lastSync.type === "play") {
-                player.playVideo().catch((e: any) => console.error("Cached Play failed:", e));
+                setPlaying(true);
                 setIsPaused(false);
             } else {
-                player.pauseVideo();
+                setPlaying(false);
                 setIsPaused(true);
             }
-            setLastSync(null); // Clear after applying
+            setLastSync(null);
         }
     }, [lastSync]);
 
+    // When current video changes, start playing it
     useEffect(() => {
-        if (!videoPlayerRef.current || !currentVideo?.extractedId) return;
+        if (!currentVideo?.extractedId) return;
 
-        // If listener, don't play until joined
-        // Removing the isJoined guard so it plays automatically
+        const isListener = pathname.startsWith("/party/");
 
-
-        if (!playerInstanceRef.current) {
-            playerInstanceRef.current = YouTubePlayer(videoPlayerRef.current, {
-                playerVars: {
-                    controls: pathname.startsWith("/creator/") ? 0 : 1,
-                    disablekb: pathname.startsWith("/creator/") ? 1 : 0,
-                    rel: 0,
-                    modestbranding: 1
-                }
-            });
-
-            playerInstanceRef.current.on("ready", () => {
-                console.log("✅ YouTube Player Ready");
-                setIsPlayerReady(true);
-            });
-
-            playerInstanceRef.current.on("stateChange", async (event: any) => {
-                const isCreator = !pathname.startsWith("/creator/");
-
-                if (event.data === 0) {
-                    playNext();
-                }
-
-                // Synchronization: Only creator broadcasts
-                if (isCreator && playerInstanceRef.current) {
-
-                    let type: "play" | "pause" = "pause";
-
-                    if (event.data === 1) {
-                        type = "play"; // PLAYING
-                        setIsPaused(false);
-                    }
-                    if (event.data === 2) {
-                        type = "pause"; // PAUSED
-                        setIsPaused(true);
-                    }
-
-                    if (event.data === 1 || event.data === 2) {
-                        const currentTime = (await playerInstanceRef.current.getCurrentTime()) || 0;
-                        console.log(`📤 Sending sync: ${type} at ${currentTime}s`);
-                        fetch("/api/streams/sync", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                creatorId,
-                                type,
-                                currentTime: typeof currentTime === 'number' ? currentTime : 0
-                            })
-                        }).then(r => {
-                            if (!r.ok) console.error("❌ Sync broadcast failed status:", r.status);
-                        }).catch(e => console.error("❌ Sync broadcast failed:", e));
-                    }
-                } else if (pathname.startsWith("/creator/")) {
-                    // For listener, just track state locally for overlay
-                    if (event.data === 1) setIsPaused(false);
-                    if (event.data === 2) setIsPaused(true);
-                }
-            });
-        }
-
-        const player = playerInstanceRef.current;
-        player.loadVideoById(currentVideo.extractedId);
-
-        const isListener = pathname.startsWith("/creator/");
-
-        // Sync logic for listeners - ONLY IF JOINED
+        // Sync offset for listeners who have already joined
         if (isListener && isJoined && currentVideo.playedTs) {
             const playedAt = new Date(currentVideo.playedTs).getTime();
             const now = new Date().getTime();
             const offsetSeconds = (now - playedAt) / 1000;
-
             if (offsetSeconds > 0) {
                 console.log(`📡 Syncing to offset: ${offsetSeconds}s`);
-                player.seekTo(offsetSeconds, true);
+                // Seek on ready via a small delay to ensure player is loaded
+                setTimeout(() => {
+                    reactPlayerRef.current?.seekTo(offsetSeconds, 'seconds');
+                }, 500);
             }
         }
 
-        // Only auto-play if creator OR if listener has already joined
         if (!isListener || isJoined) {
-            player.playVideo().catch((err: any) => {
-                console.warn("Autoplay failed:", err);
+            setPlaying(true);
+        } else {
+            setPlaying(false);
+        }
+    }, [currentVideo, pathname, isJoined]);
+
+    useEffect(() => {
+        setResolvedUrl(null); // Reset resolved URL when video changes
+        if (!currentVideo?.extractedId) return;
+    }, [currentVideo?.id]);
+
+    const handleSearch = async (query: string) => {
+        if (!query || query.trim().length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        try {
+            setIsSearching(true);
+            const res = await fetch(`/api/streams/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            setSearchResults(data.items || []);
+        } catch (err) {
+            console.error("Search failed:", err);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const handleSelectSearchResult = async (video: any) => {
+        setSearchResults([]);
+        setVideoLink("");
+        setLoading(true);
+        try {
+            const res = await fetch("/api/streams", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    creatorId: creatorId,
+                    url: `https://www.youtube.com/watch?v=${video.id}`
+                })
             });
-        }
-
-        return () => {
-            if (playerInstanceRef.current) {
-                // We only destroy if the component unmounts or creatorId changes
-                // But currentVideo change should just load next video
-            }
-        };
-    }, [currentVideo]);
-
-    // Separate effect for mute/unmute
-    useEffect(() => {
-        if (playerInstanceRef.current) {
-            if (isMuted) {
-                playerInstanceRef.current.mute();
+            const data = await res.json();
+            if (res.ok) {
+                toast.success(`Added ${video.title}`);
+                refreshStreams();
             } else {
-                playerInstanceRef.current.unMute();
+                toast.error(data.message || "Failed to add video");
             }
+        } catch (err) {
+            toast.error("Error adding video");
+        } finally {
+            setLoading(false);
         }
-    }, [isMuted]);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (playerInstanceRef.current) {
-                playerInstanceRef.current.destroy();
-                playerInstanceRef.current = null;
-            }
-        };
-    }, []);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!videoLink.trim()) return;
 
-        const playlistMatch = videoLink.match(PLAYLIST_REGEX);
+        const isUrl = videoLink.match(YT_REGEX) || videoLink.match(SPOTIFY_TRACK_REGEX) || videoLink.match(PLAYLIST_REGEX);
+
+        if (!isUrl) {
+            // If it's not a URL, treat it as a search query
+            handleSearch(videoLink);
+            return;
+        }
+
+        const playlistMatch = videoLink.match(PLAYLIST_REGEX) || videoLink.match(SPOTIFY_PLAYLIST_REGEX);
         if (playlistMatch) {
             const playlistId = playlistMatch[1];
             setLoading(true);
@@ -369,7 +317,7 @@ export default function StreamView({
                 const res = await fetch("/api/streams/playlist", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ playlistId })
+                    body: JSON.stringify({ playlistId, url: videoLink })
                 });
                 if (!res.ok) throw new Error("Failed to fetch playlist");
                 const data = await res.json();
@@ -386,7 +334,7 @@ export default function StreamView({
 
         setLoading(true);
         try {
-            const res = await fetch("/api/streams/", {
+            const res = await fetch("/api/streams", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -405,6 +353,7 @@ export default function StreamView({
             setVideoLink('');
             toast.success("Added to queue!");
             addLog("success", `Added single video: ${data.title}`);
+            refreshStreams();
         } catch (err: any) {
             console.error("Error adding video:", err);
         } finally {
@@ -412,10 +361,28 @@ export default function StreamView({
         }
     };
 
+    const resolveStream = async (videoId: string) => {
+        try {
+            console.log("📡 SSR Resolution: Attempting to bypass restriction for:", videoId);
+            const res = await fetch(`/api/streams/resolve?videoId=${videoId}`);
+            const data = await res.json();
+            if (data.url) {
+                console.log("✅ SSR Resolution: Success! Using direct stream.");
+                setResolvedUrl(data.url);
+            } else {
+                throw new Error(data.error || "No URL returned");
+            }
+        } catch (err) {
+            console.error("❌ SSR Resolution: Failed", err);
+            toast.error("This video cannot be played. Restriction bypass failed.");
+            playNext();
+        }
+    };
+
     const handleAddFromPlaylist = async (video: any) => {
         try {
-            const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
-            const res = await fetch("/api/streams/", {
+            const videoUrl = video.isSpotify ? video.url : `https://www.youtube.com/watch?v=${video.id}`;
+            const res = await fetch("/api/streams", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -441,84 +408,75 @@ export default function StreamView({
 
     const handleAddAllFromPlaylist = async () => {
         setIsPlaylistModalOpen(false);
-        const total = playlistVideos.length;
+        const videosToProcess = [...playlistVideos];
+        const total = videosToProcess.length;
         let successCount = 0;
         let failCount = 0;
 
+        if (total === 0) return;
+
         toast.info(`Adding ${total} videos...`, { autoClose: 5000 });
+        console.log(`🚀 Starting bulk add for ${total} videos`);
 
         for (let i = 0; i < total; i++) {
-            const video = playlistVideos[i];
+            const video = videosToProcess[i];
+            if (!video) {
+                console.warn(`⚠️ Skipping null video at index ${i}`);
+                continue;
+            }
 
-            // Throttling: Gap of 5 seconds after the first 5 songs
+            // Throttling: Gap of 5 seconds after the first 5 songs to avoid rate limits
             if (i >= 5) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
             }
 
             try {
-                const res = await fetch("/api/streams/", {
+                const targetUrl = video.url || (video.id ? `https://www.youtube.com/watch?v=${video.id}` : null);
+
+                if (!targetUrl) {
+                    console.error(`❌ No URL or ID found for video at index ${i}:`, video);
+                    failCount++;
+                    continue;
+                }
+
+                const res = await fetch("/api/streams", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         creatorId: creatorId,
-                        url: `https://www.youtube.com/watch?v=${video.id}`
+                        url: targetUrl
                     })
                 });
 
                 if (res.ok) {
                     successCount++;
-                    addLog("success", `Playlist add: ${video.title}`);
+                    addLog("success", `Added: ${video.title}`);
                 } else {
                     failCount++;
-                    const errData = await res.json();
-                    const errorMsg = errData.message || "Unknown error";
-                    console.error(`Failed to add video ${i + 1}: ${video.title}. Error:`, errorMsg);
+                    const errData = await res.json().catch(() => ({}));
+                    const errorMsg = errData.message || "Server error";
+                    console.error(`❌ Failed to add "${video.title}":`, errorMsg);
                     addLog("error", `Skip ${video.title}: ${errorMsg}`);
                 }
             } catch (err) {
                 failCount++;
-                console.error(`Network error adding video ${i + 1}:`, err);
+                console.error(`❌ Network error adding "${video.title}":`, err);
                 addLog("error", `Network Error: ${video.title}`);
             }
 
-            // Progress toast every 5 videos
-            if ((i + 1) % 5 === 0) {
-                toast.info(`Progress: ${i + 1}/${total} processed...`, { autoClose: 2000 });
-            }
-
-            // Update UI periodically
+            // Periodically refresh the queue to show progress
             if ((i + 1) % 5 === 0 || i === total - 1) {
                 refreshStreams();
             }
         }
 
         if (failCount > 0) {
-            toast.warning(`Finished! ${successCount} added, ${failCount} failed. Check console for details.`);
+            toast.warning(`Bulk add finished: ${successCount} added, ${failCount} skipped.`);
         } else {
-            toast.success(`Successfully added all ${successCount} videos to queue!`);
+            toast.success(`Successfully added all ${successCount} songs!`);
         }
         setVideoLink('');
     };
-
-    // const handleAddRecommendation = async (recommendation: any) => {
-    //     try {
-    //         setLoading(true);
-    //         const videoUrl = `https://www.youtube.com/watch?v=${recommendation.id}`;
-    //         const res = await fetch("/api/streams/", {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             body: JSON.stringify({
-    //                 creatorId: creatorId,
-    //                 url: videoUrl
-    //             })
-    //         });
-    //         // ... handle response
-    //     } catch (err) {
-    //         console.error("Error adding recommendation:", err);
-    //     } finally {
-    //         setLoading(false);
-    //     }
-    // };
 
     const handleRemove = async (streamId: string) => {
         try {
@@ -582,29 +540,20 @@ export default function StreamView({
                 return;
             }
 
-            // Defensively destroy old player before loading new one
-            // to prevent removeChild conflicts during unmounting/remounting
-            if (playerInstanceRef.current) {
-                try {
-                    playerInstanceRef.current.destroy();
-                } catch (e) {
-                    console.error("playNext: Error destroying old player:", e);
-                }
-                playerInstanceRef.current = null;
-            }
-
-            // Small delay to ensure YouTube API has finished DOM cleanup
-            setTimeout(() => {
-                setCurrentVideo(json.stream);
-                setQueue(q => q.filter(x => x.id !== json.stream.id));
-                toast.info(`Now playing: ${json.stream.title}`);
-            }, 50);
+            // With react-player, no cleanup needed — the URL change handles it
+            setCurrentVideo(json.stream);
+            setQueue(q => q.filter(x => x.id !== json.stream.id));
+            setPlaying(true);
+            toast.info(`Now playing: ${json.stream.title}`);
         } catch (e) {
             console.error("Error: ", e);
         } finally {
             setPlayNextLoader(false);
         }
     };
+
+    // Removed handleRestrictedVideo as we now favor raw iframe fallback
+
 
     const stopQueue = async () => {
         try {
@@ -618,23 +567,12 @@ export default function StreamView({
                 throw new Error(data.message || "Failed to stop queue");
             }
 
-            // Cleanup YouTube player FIRST to avoid race conditions with React unmounting
-            if (playerInstanceRef.current) {
-                try {
-                    playerInstanceRef.current.destroy();
-                } catch (e) {
-                    console.error("Safe cleanup: Error destroying player:", e);
-                }
-                playerInstanceRef.current = null;
-            }
-
-            // Delay state updates slightly to ensure YouTube API finishes DOM manipulation
-            setTimeout(() => {
-                setCurrentVideo(null);
-                setQueue([]);
-                refreshStreams();
-                toast.success("Queue stopped and cleared!");
-            }, 50);
+            // With react-player, no imperative cleanup needed
+            setCurrentVideo(null);
+            setPlaying(false);
+            setQueue([]);
+            refreshStreams();
+            toast.success("Queue stopped and cleared!");
 
             console.log("Queue successfully cleared");
         } catch (error) {
@@ -645,20 +583,19 @@ export default function StreamView({
 
 
     const handleGoLive = async () => {
-        if (!playerInstanceRef.current) return;
+        if (!reactPlayerRef.current) return;
 
         setIsJoined(true);
-        const player = playerInstanceRef.current;
 
         // Final sync attempt
         if (lastSync) {
             console.log("Applying final cached sync on join:", lastSync);
-            player.seekTo(lastSync.currentTime, true);
-            if (lastSync.type === "play") player.playVideo();
-            else player.pauseVideo();
+            reactPlayerRef.current.seekTo(lastSync.currentTime, 'seconds');
+            if (lastSync.type === "play") setPlaying(true);
+            else setPlaying(false);
             setLastSync(null);
         } else {
-            player.playVideo();
+            setPlaying(true);
         }
 
         // Request an up-to-date sync from creator
@@ -670,7 +607,7 @@ export default function StreamView({
     };
 
     const handleShare = () => {
-        const sharableLink = `${window.location.protocol}//${window.location.host}/creator/${creatorId}`;
+        const sharableLink = `${window.location.protocol}//${window.location.host}/party/${creatorId}`;
         navigator.clipboard.writeText(sharableLink).then(() => {
             toast.success("Link Copied to Clipboard!", {
                 position: "top-right",
@@ -721,10 +658,82 @@ export default function StreamView({
                                 {currentVideo ? (
                                     playVideo ? (
                                         <div className="w-full relative">
-                                            <div className="relative">
-                                                <div id="youtube-player" ref={videoPlayerRef} className="w-full aspect-video min-h-[300px] md:min-h-[450px] bg-black" />
+                                            <div className="relative w-full aspect-video md:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
+                                                <ReactPlayer
+                                                    ref={reactPlayerRef}
+                                                    url={resolvedUrl || `https://www.youtube.com/watch?v=${currentVideo.extractedId}`}
+                                                    playing={playing}
+                                                    muted={isMuted}
+                                                    controls={!pathname.startsWith("/party/")}
+                                                    width="100%"
+                                                    height="100%"
+                                                    style={{ minHeight: '300px' }}
+                                                    className="aspect-video min-h-[300px] md:min-h-[450px]"
+                                                    config={{
+                                                        playerVars: {
+                                                            rel: 0,
+                                                            modestbranding: 1,
+                                                            iv_load_policy: 3,
+                                                            playsinline: 1,
+                                                            enablejsapi: 1,
+                                                            autoplay: 1,
+                                                            origin: typeof window !== 'undefined' ? window.location.origin : ''
+                                                        }
+                                                    }}
 
-                                                {pathname.startsWith("/creator/") && !isJoined && (
+                                                    onReady={() => {
+                                                        console.log('✅ ReactPlayer Ready');
+                                                        setIsPlayerReady(true);
+                                                    }}
+                                                    onPlay={() => {
+                                                        setIsPaused(false);
+                                                        setPlaying(true);
+                                                        const isCreator = !pathname.startsWith("/party/");
+                                                        if (isCreator && reactPlayerRef.current) {
+                                                            const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                            console.log(`📤 Sending sync: play at ${currentTime}s`);
+                                                            fetch("/api/streams/sync", {
+                                                                method: "POST",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ creatorId, type: "play", currentTime })
+                                                            });
+                                                        }
+                                                    }}
+                                                    onPause={() => {
+                                                        setIsPaused(true);
+                                                        setPlaying(false);
+                                                        const isCreator = !pathname.startsWith("/party/");
+                                                        if (isCreator && reactPlayerRef.current) {
+                                                            const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                            console.log(`📤 Sending sync: pause at ${currentTime}s`);
+                                                            fetch("/api/streams/sync", {
+                                                                method: "POST",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ creatorId, type: "pause", currentTime })
+                                                            });
+                                                        }
+                                                    }}
+                                                    onEnded={() => {
+                                                        console.log('Video ended, playing next');
+                                                        playNext();
+                                                    }}
+                                                    onError={(err) => {
+                                                        console.warn('⚠️ ReactPlayer error:', err, 'for ID:', currentVideo.extractedId);
+                                                        // 150/101 are embed restrictions. 2/100 are general errors.
+                                                        if (err === 101 || err === 150 || err === 2 || err === 100) {
+                                                            if (!resolvedUrl) {
+                                                                toast.info("Embbed restricted. Attempting to bypass...");
+                                                                resolveStream(currentVideo.extractedId);
+                                                            } else {
+                                                                console.log("🔄 Restriction detected even on resolved URL, skipping video");
+                                                                toast.error("Playback failed. Skipping...");
+                                                                playNext();
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+
+                                                {pathname.startsWith("/party/") && !isJoined && (
                                                     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
                                                         <div className="text-center space-y-6 max-w-sm px-6">
                                                             <div className="relative">
@@ -749,18 +758,18 @@ export default function StreamView({
                                                     </div>
                                                 )}
 
-                                                {isPaused && currentVideo && (isJoined || !pathname.startsWith("/creator/")) && (
+                                                {isPaused && (isJoined || !pathname.startsWith("/party/")) && (
                                                     <div
                                                         className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300"
                                                         onClick={() => {
-                                                            const isCreator = !pathname.startsWith("/creator/");
-                                                            if (isCreator && playerInstanceRef.current) {
-                                                                playerInstanceRef.current.playVideo();
+                                                            const isCreator = !pathname.startsWith("/party/");
+                                                            if (isCreator) {
+                                                                setPlaying(true);
                                                             }
                                                         }}
                                                     >
                                                         <div className="relative z-10 flex flex-col items-center gap-4">
-                                                            {!pathname.startsWith("/creator/") ? (
+                                                            {!pathname.startsWith("/party/") ? (
                                                                 <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
                                                                     <Play className="fill-white w-10 h-10 ml-1" />
                                                                 </div>
@@ -773,7 +782,7 @@ export default function StreamView({
                                                     </div>
                                                 )}
 
-                                                {pathname.startsWith("/creator/") && (
+                                                {pathname.startsWith("/party/") && (
                                                     <>
                                                         <div className="absolute inset-0 z-10 cursor-default" />
                                                         <div className="absolute bottom-4 right-4 z-20">
@@ -796,12 +805,10 @@ export default function StreamView({
                                         <div className="w-full">
                                             <div className="relative w-full aspect-video md:h-[450px]">
                                                 {currentVideo.bigImg ? (
-                                                    <Image
+                                                    <img
                                                         src={currentVideo.bigImg}
                                                         alt={currentVideo.title}
-                                                        fill
-                                                        className="object-contain"
-                                                        priority
+                                                        className="object-contain w-full h-full"
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500">No Image</div>
@@ -821,7 +828,7 @@ export default function StreamView({
                             </CardContent>
                         </Card>
 
-                        {!pathname.startsWith("/creator/") && (
+                        {!pathname.startsWith("/party/") && (
                             <div className="flex gap-4">
                                 <Button
                                     disabled={playNextLoader}
@@ -851,8 +858,8 @@ export default function StreamView({
                                 >
                                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Activity Log</h4>
                                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                                        {activityLogs.map((log) => (
-                                            <div key={log.timestamp} className="text-sm flex items-start gap-3">
+                                        {activityLogs.map((log, index) => (
+                                            <div key={`${log.timestamp}-${index}`} className="text-sm flex items-start gap-3">
                                                 <span className={log.type === "success" ? "text-green-500" : "text-red-500"}>
                                                     {log.type === "success" ? "✓" : "✕"}
                                                 </span>
@@ -869,12 +876,56 @@ export default function StreamView({
                         <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-white">Add to Queue</h2>
                             <div className="space-y-4">
-                                <Input
-                                    value={videoLink}
-                                    onChange={(e) => setVideoLink(e.target.value)}
-                                    placeholder="YouTube Video or Playlist Link"
-                                    className="w-full h-12 bg-gray-900 border-gray-800 text-white rounded-xl"
-                                />
+                                <div className="relative">
+                                    <Input
+                                        value={videoLink}
+                                        onChange={(e) => {
+                                            setVideoLink(e.target.value);
+                                            if (e.target.value.length >= 2 && !e.target.value.match(YT_REGEX) && !e.target.value.match(SPOTIFY_TRACK_REGEX)) {
+                                                handleSearch(e.target.value);
+                                            } else {
+                                                setSearchResults([]);
+                                            }
+                                        }}
+                                        placeholder="Paste Link or Type Song Name"
+                                        className="w-full h-12 bg-gray-900 border-gray-800 text-white rounded-xl pr-10"
+                                    />
+                                    {isSearching && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                                        </div>
+                                    )}
+
+                                    <AnimatePresence>
+                                        {searchResults.length > 0 && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: 10 }}
+                                                className="absolute z-50 left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto custom-scrollbar"
+                                            >
+                                                {searchResults.map((video) => (
+                                                    <button
+                                                        key={video.id}
+                                                        onClick={() => handleSelectSearchResult(video)}
+                                                        className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left border-b border-gray-800 last:border-0"
+                                                    >
+                                                        <img
+                                                            src={video.thumbnail}
+                                                            alt=""
+                                                            className="w-16 h-10 rounded object-cover flex-shrink-0"
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold text-white truncate">{video.title}</p>
+                                                            <p className="text-xs text-gray-400 truncate">{video.channelTitle}</p>
+                                                        </div>
+                                                        <Plus className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                                    </button>
+                                                ))}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
                                 <Button
                                     onClick={handleSubmit}
                                     disabled={loading}
@@ -903,12 +954,16 @@ export default function StreamView({
                                 </Card>
                             ) : (
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {queue.map((video) => (
-                                        <Card key={video.id} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
+                                    {queue.map((video, index) => (
+                                        <Card key={`${video.id}-${index}`} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
                                             <CardContent className="p-3 flex items-center gap-4">
                                                 <div className="w-20 h-12 relative flex-shrink-0">
                                                     {video.extractedId ? (
-                                                        <Image src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`} alt={video.title} fill className="rounded object-cover" />
+                                                        <img
+                                                            src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`}
+                                                            alt={video.title}
+                                                            className="rounded object-cover w-full h-full"
+                                                        />
                                                     ) : (
                                                         <div className="w-full h-full bg-gray-800 rounded" />
                                                     )}
@@ -932,8 +987,8 @@ export default function StreamView({
                             )}
                         </div>
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
 
             <ToastContainer position="top-right" autoClose={3000} theme="dark" />
 
@@ -957,10 +1012,18 @@ export default function StreamView({
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                                {playlistVideos.map((video: any) => (
-                                    <div key={video.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-gray-800 hover:bg-white/10 transition-all">
+                                {playlistVideos.map((video: any, index: number) => (
+                                    <div key={`${video.id}-${index}`} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-gray-800 hover:bg-white/10 transition-all">
                                         <div className="w-24 h-14 relative flex-shrink-0">
-                                            <Image src={video.thumbnail} alt={video.title} fill className="rounded-lg object-cover" />
+                                            {video.thumbnail ? (
+                                                <img
+                                                    src={video.thumbnail}
+                                                    alt={video.title}
+                                                    className="rounded-lg object-cover w-full h-full"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full bg-gray-800 rounded-lg" />
+                                            )}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-semibold text-white text-sm line-clamp-2">{video.title}</h4>
@@ -973,6 +1036,6 @@ export default function StreamView({
                     </div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 }

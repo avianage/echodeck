@@ -1,26 +1,33 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaClient } from "@/app/lib/db";
 // @ts-expect-error No Types available
 import youtubesearchapi from "youtube-search-api";
-import { YT_REGEX } from "@/app/lib/utils";
+import { YT_REGEX, SPOTIFY_TRACK_REGEX } from "@/app/lib/utils";
 import { getServerSession } from "next-auth";
-import { pusherServer } from "@/app/lib/pusher";
 import { authOptions } from "@/app/lib/auth";
+import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
+// @ts-expect-error No Types available
+import spotifyUrlInfo from "spotify-url-info";
+
+const { getTracks } = spotifyUrlInfo(fetch as any);
 
 const CreateStreamSchema = z.object({
     creatorId: z.string(),
     url: z.string()
 })
 
-const MAX_QUEUE_LENGTH = 20;
+const MAX_QUEUE_LENGTH = 50;
+
 
 export async function POST(req: NextRequest) {
     try {
         const data = CreateStreamSchema.parse(await req.json());
-        const isYt = data.url.match(YT_REGEX)
+        const isYt = data.url.match(YT_REGEX);
+        const isSpotify = data.url.match(SPOTIFY_TRACK_REGEX);
 
-        if (!isYt) {
+        if (!isYt && !isSpotify) {
             return NextResponse.json({
                 message: "Wrong URL format"
             }, {
@@ -28,50 +35,148 @@ export async function POST(req: NextRequest) {
             })
         }
 
-        const match = data.url.match(YT_REGEX);
-        const extractedId = match ? match[1] : null;
+        let extractedId = "";
+        let title = "";
+        let smallImg = "";
+        let bigImg = "";
+        let streamType: "Youtube" | "Spotify" = "Youtube";
 
-        if (!extractedId) {
-            return NextResponse.json({
-                message: "Invalid YouTube URL. Could not extract video ID."
-            }, {
-                status: 411
-            })
-        }
-
-        console.log(`🎥 Fetching details for video: ${extractedId}`);
-        let res;
-        try {
-            res = await youtubesearchapi.GetVideoDetails(extractedId);
-            if (!res || !res.thumbnail) {
-                throw new Error("Invalid response from YouTube API");
+        if (isYt) {
+            streamType = "Youtube";
+            extractedId = isYt[1];
+            if (!extractedId) {
+                return NextResponse.json({ message: "Invalid YouTube URL." }, { status: 411 });
             }
-        } catch (e: unknown) {
-            console.error(`❌ YoutubeSearchApi.GetVideoDetails failed for ${extractedId}:`, e);
-            return NextResponse.json({
-                message: `Failed to fetch video details: ${e instanceof Error ? e.message : "Timeout or API error"}. Video skipped.`
-            }, {
-                status: 400
-            });
-        }
 
-        let thumbnails = [];
-        try {
-            thumbnails = res.thumbnail?.thumbnails || [];
-            if (thumbnails.length > 0) {
-                thumbnails.sort((a: { width: number }, b: { width: number }) => a.width < b.width ? -1 : 1);
+            console.log(`🎥 Fetching details for video: ${extractedId}`);
+            try {
+                let res: any;
+                try {
+                    res = await youtubesearchapi.GetVideoDetails(extractedId);
+                } catch (libErr) {
+                    console.warn(`⚠️ GetVideoDetails threw an error for ${extractedId}. Trying search fallback...`, libErr);
+                    // Search by ID often returns the same video with a different metadata format
+                    const searchFallback = await youtubesearchapi.GetListByKeyword(extractedId, false, 1, [{ type: 'video' }]);
+                    res = searchFallback?.items?.[0];
+                    if (res) {
+                        // Normalize search result to look like VideoDetails enough for the logic below
+                        if (!res.thumbnail && res.thumbnails) res.thumbnail = { thumbnails: res.thumbnails };
+                    }
+                }
+
+                if (!res) throw new Error("Could not retrieve video details from any source.");
+
+                title = res.title || "YouTube Video";
+
+                title = res.title || "YouTube Video";
+
+                let thumbnails = (res.thumbnail?.thumbnails || res.thumbnails || []);
+
+
+                if (thumbnails.length > 0) {
+                    thumbnails = [...thumbnails].sort((a: any, b: any) => (a?.width || 0) < (b?.width || 0) ? -1 : 1);
+                    smallImg = thumbnails.length > 1 ? thumbnails[thumbnails.length - 2]?.url : thumbnails[0]?.url;
+                    bigImg = thumbnails[thumbnails.length - 1]?.url;
+                }
+
+                // Fallback images if still empty or switched
+                if (!smallImg) smallImg = `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`;
+                if (!bigImg) bigImg = `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
+
+            } catch (e: unknown) {
+                console.error(`❌ YouTube detail fetching failed:`, e);
+                return NextResponse.json({ message: `Failed to fetch video details. This video might be restricted or unavailable.` }, { status: 400 });
             }
-        } catch (e) {
-            console.error("Error sorting thumbnails:", e);
+        } else if (isSpotify) {
+            streamType = "Spotify";
+            const spotifyId = isSpotify[1];
+            if (!spotifyId) {
+                return NextResponse.json({ message: "Invalid Spotify URL." }, { status: 411 });
+            }
+
+            const session = await getServerSession(authOptions) as any;
+            console.log(`🎧 Fetching details for Spotify track: ${spotifyId}`);
+
+            let track: any = null;
+
+            // 1. Try User Access Token if available
+            if (session?.accessToken && session?.provider?.toLowerCase() === "spotify") {
+                try {
+                    console.log("📡 Trying User Token for track fetch");
+                    const userApi = getUserSpotifyApi(session.accessToken);
+                    if (userApi) {
+                        const res = await userApi.getTrack(spotifyId);
+                        track = res.body;
+                        console.log("✅ Track fetched via User Token");
+                    }
+                } catch (err: any) {
+                    console.warn(`⚠️ User Token failed for track ${spotifyId}: ${err.message}`);
+                }
+            }
+
+            // 2. Try App Client Credentials if No User Token or it failed
+            if (!track) {
+                try {
+                    console.log("📡 Trying Client Credentials for track fetch");
+                    const appApi = await getSpotifyApi();
+                    if (appApi) {
+                        const res = await appApi.getTrack(spotifyId);
+                        track = res.body;
+                        console.log("✅ Track fetched via Client Credentials");
+                    }
+                } catch (err: any) {
+                    console.warn(`⚠️ Client Credentials failed for track ${spotifyId}: ${err.message}`);
+                }
+            }
+
+            // 3. Fallback to Scraping
+            if (!track) {
+                try {
+                    console.log("📡 Falling back to SCRAPE for track fetch");
+                    const trackUrl = `https://open.spotify.com/track/${spotifyId}`;
+                    const scrapedTracks = await getTracks(trackUrl);
+                    if (scrapedTracks && scrapedTracks.length > 0) {
+                        const t = scrapedTracks[0];
+                        track = {
+                            name: t.name,
+                            artists: t.artists || [{ name: t.artist || "Unknown Artist" }],
+                            album: { images: t.album?.images || [] }
+                        };
+                        console.log("✅ Track fetched via Scraping");
+                    }
+                } catch (err: any) {
+                    console.error("❌ All Spotify track fetch methods failed.", err.message);
+                }
+            }
+
+            if (!track) {
+                return NextResponse.json({ message: "Failed to fetch Spotify track details from all sources." }, { status: 400 });
+            }
+
+            try {
+                const artistNames = track.artists.map((a: any) => a.name).join(", ");
+                title = `${track.name} by ${artistNames}`;
+
+                const images = track.album?.images || [];
+                if (images.length > 0) {
+                    bigImg = images[0].url;
+                    smallImg = images.length > 1 ? images[1].url : images[0].url;
+                } else {
+                    bigImg = "";
+                    smallImg = "";
+                }
+
+                const res = await youtubesearchapi.GetListByKeyword(`${track.name} ${artistNames}`, false, 1, [{ type: 'video' }]);
+                const bestMatch = res?.items?.[0];
+                if (!bestMatch) {
+                    return NextResponse.json({ message: "Could not find a corresponding playable video for this song." }, { status: 404 });
+                }
+                extractedId = bestMatch.id;
+            } catch (e) {
+                console.error(`❌ Spotify API or YT fallback failed:`, e);
+                return NextResponse.json({ message: "Failed to process Spotify track." }, { status: 400 });
+            }
         }
-
-        const smallImg = thumbnails.length > 1
-            ? thumbnails[thumbnails.length - 2].url
-            : (thumbnails.length > 0 ? thumbnails[0].url : `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`);
-
-        const bigImg = thumbnails.length > 0
-            ? thumbnails[thumbnails.length - 1].url
-            : `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
 
         const session = await getServerSession(authOptions);
 
@@ -109,22 +214,17 @@ export async function POST(req: NextRequest) {
                 addedById: user.id,
                 url: data.url,
                 extractedId,
-                type: "Youtube",
-                title: res.title || "YouTube Video",
+                type: streamType,
+                title,
                 smallImg,
                 bigImg
             }
-        });
-
-        await pusherServer.trigger(data.creatorId, "stream-update", {
-            message: "New stream added"
         });
 
         return NextResponse.json({
             ...stream,
             haveUpvoted: false,
             upvotes: 0
-
         })
 
     } catch (e) {
@@ -178,6 +278,16 @@ export async function GET(req: NextRequest) {
                     userId: creatorId,
                     played: false
                 },
+                orderBy: [
+                    {
+                        upvotes: {
+                            _count: 'desc'
+                        }
+                    },
+                    {
+                        createdAt: 'asc'
+                    }
+                ],
                 include: {
                     _count: {
                         select: {

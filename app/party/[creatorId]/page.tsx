@@ -1,6 +1,6 @@
 import StreamView from "@/app/components/StreamView";
 
-export default async function Creator(props: { params: Promise<{ creatorId: string }> }) {
+export default async function Party(props: { params: Promise<{ creatorId: string }> }) {
   const { params } = props;
   const { creatorId } = await params;
 

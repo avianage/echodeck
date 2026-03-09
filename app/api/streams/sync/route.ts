@@ -1,5 +1,4 @@
 import { prismaClient } from "@/app/lib/db";
-import { pusherServer } from "@/app/lib/pusher";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -40,9 +39,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
         }
 
-        await pusherServer.trigger(data.creatorId, "player-sync", {
-            type: data.type,
-            currentTime: data.currentTime
+        // Update the CurrentStream record as the source of truth for sync
+        await prismaClient.currentStream.upsert({
+            where: { userId: data.creatorId },
+            update: {
+                currentTime: data.currentTime,
+                isPaused: data.type === "pause",
+                updatedAt: new Date(),
+            },
+            create: {
+                userId: data.creatorId,
+                currentTime: data.currentTime,
+                isPaused: data.type === "pause",
+            },
         });
 
         return NextResponse.json({ message: "Sync successful" });

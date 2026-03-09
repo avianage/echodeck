@@ -27,11 +27,16 @@ export async function GET() {
             userId: user.id,
             played: false
         },
-        orderBy: {
-            upvotes: {
-                _count: 'desc'
+        orderBy: [
+            {
+                upvotes: {
+                    _count: 'desc'
+                }
+            },
+            {
+                createdAt: 'asc'
             }
-        }
+        ]
     });
 
     if (!mostUpvotedStream) {

@@ -1,123 +1,106 @@
 # 🎧 EchoDeck
 
-**EchoDeck** is a collaborative streaming queue web app where creators can manage video queues and listeners can upvote or suggest tracks in real time. Built with **Next.js 14 App Router**, **Prisma**, **PostgreSQL**, and **NextAuth**, it delivers a smooth and interactive experience for managing media queues.
+**EchoDeck** is a high-performance, collaborative streaming queue engine designed for creators and listeners. It allows real-time session synchronization and multi-platform content resolution via YouTube and Spotify.
+
+> [!IMPORTANT]
+> **Video Playback Restrictions**: Due to YouTube's owner restrictions, some videos (e.g., from VEVO, T-Series, or major music labels) cannot be played within the embedded player. This is a platform-level limitation. Creators can use the "Fix Video" tool to manually swap a restricted ID for a working alternative.
 
 ---
 
-## 🚀 Features
+## ✨ Key Features
 
-- 🔐 **Google Authentication** via NextAuth
-- 🎥 **Video Queue System** for creators
-- 👍 **Upvote mechanism** to prioritize videos
-- 👥 **Multiple user roles**: Creator & Listener
-- 🧹 **Queue clearing logic** with persistent database sync
-- 📡 **Dynamic rendering** of the current video and playlist
-- 💾 **PostgreSQL + Prisma ORM** for type-safe DB operations
-- ⚡ Real-time state updates (planned with websockets or polling)
+### 📡 Real-time Collaborative Queue
+*   **Dynamic Upvoting**: A democratic queue system where listeners can upvote suggestions to prioritize the next track.
+*   **Creator Sovereignty**: Creators have full control over the playback, with absolute authority to skip, pause, or clear the queue.
+*   **Persistent State**: All queue data and voting history are backed by PostgreSQL, ensuring session continuity even after restarts.
 
----
+### 🧠 Content Resolution
+EchoDeck features a multi-layered engine to resolve media from various sources:
+*   **Spotify & YouTube Support**: Handle tracks or playlist URLs from both major platforms.
+*   **Playlist Importing**: Batch-import entire YouTube or Spotify playlists directly into the live session queue.
 
-## 🧱 Tech Stack
-
-| Tech             | Description                                |
-|------------------|--------------------------------------------|
-| **Next.js 14**   | App Router for file-based routing          |
-| **TypeScript**   | Strong typing across the app               |
-| **PostgreSQL**   | Relational database                        |
-| **Prisma**       | Type-safe ORM with codegen                 |
-| **NextAuth**     | Auth system with Google OAuth              |
-| **Tailwind CSS** | Styling framework (optional, if used)      |
+### 🔄 Database-Backed Heartbeat Sync
+*   **Custom Synchronization**: Uses a custom database-backed **Heartbeat System** for multi-listener synchronization without relying on expensive websocket services.
+*   **Creator-to-Listener Sync**: The creator's player state (current time, pause/play status) is periodically pushed to the database and syncs across all listeners.
 
 ---
 
-## 🧠 Database Models
+## 🛠️ Technical Details
 
-The app uses the following main Prisma models:
+### 🔊 Spotify Resolution
+Since Spotify tracks cannot be directly embedded as video streams, EchoDeck implements the following resolution flow:
+1.  **Metadata Retrieval**: Fetching track metadata (title, artist, album art) via fallback layers:
+    *   Authenticated User OAuth Token.
+    *   App-level Client Credentials.
+    *   High-speed Scraper.
+2.  **Mapping logic**: The metadata is used to resolve the corresponding audio/video on YouTube for playback.
 
-- `User` — Authenticated user info
-- `Stream` — Represents each media item
-- `CurrentStream` — Tracks the currently playing stream
-- `Upvote` — Voting table for prioritizing queue
-
-Refer to `prisma/schema.prisma` for detailed definitions.
-
----
-
-## 🛠️ Setup Instructions
-
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/yourusername/echodeck.git
-   cd echodeck
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment variables**
-
-   Create a `.env` file in the root:
-
-   ```env
-   DATABASE_URL=postgresql://your-db-url
-   GOOGLE_CLIENT_ID=your-google-client-id
-   GOOGLE_CLIENT_SECRET=your-google-client-secret
-   NEXTAUTH_SECRET=your-nextauth-secret
-   ```
-
-4. **Set up Prisma**
-   ```bash
-   npx prisma generate
-   npx prisma migrate dev --name init
-   ```
-
-5. **Run the development server**
-   ```bash
-   npm run dev
-   ```
+### 🎥 Media Playback Note
+While the application attempts to find the best matching media, some content is restricted from embedding by YouTube or the content owner.
+*   **Server-Side Resolution**: We use `yt-dlp` on the server to attempt to resolve raw stream URLs for enhanced playback compatibility where possible.
 
 ---
 
-## 📁 Folder Structure
+## 🏗️ Tech Stack
 
+| Layer | Technology |
+|---|---|
+| **Framework** | [Next.js 15 (App Router)](https://nextjs.org/) |
+| **Language** | [TypeScript](https://www.typescriptlang.org/) |
+| **Database** | [PostgreSQL](https://www.postgresql.org/) |
+| **ORM** | [Prisma](https://www.prisma.io/) |
+| **Authentication** | [NextAuth.js (Google OAuth)](https://next-auth.js.org/) |
+| **Styling** | [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://www.framer.com/motion/) |
+| **Media Resolution** | `yt-dlp-exec`, `youtube-search-api`, `spotify-url-info` |
+
+---
+
+## 🚀 Setup & Installation
+
+### 1. Prerequisites
+*   Node.js 18+
+*   PostgreSQL Instance
+*   YouTube API Key (Optional)
+*   Spotify Developer Credentials
+
+### 2. Environment Configuration
+Create a `.env` or `.env.local` file:
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/echodeck"
+NEXTAUTH_SECRET="your_secret_here"
+GOOGLE_CLIENT_ID="your_google_id"
+GOOGLE_CLIENT_SECRET="your_google_secret"
+SPOTIFY_CLIENT_ID="your_spotify_id"
+SPOTIFY_CLIENT_SECRET="your_spotify_secret"
 ```
+
+### 3. Database Initialization
+```bash
+npx prisma generate
+npx prisma migrate dev --name init
+```
+
+### 4. Run Development Server
+```bash
+npm run dev
+```
+
+---
+
+## 📁 Repository Structure
+```bash
 app/
-│
 ├── api/
 │   ├── streams/
-│   │   ├── route.ts          # Fetch streams
-│   │   └── clear/route.ts    # Clear queue logic
-│   └── auth/[...nextauth]/   # NextAuth route handler
-│
-├── lib/
-│   └── db.ts                 # Prisma client instance
-│
-├── creator/[creatorId]/      # Creator dashboard
-└── ...
+│   │   ├── heartbeat/   # Synchronization engine
+│   │   ├── resolve/     # yt-dlp stream resolution
+│   │   └── playlist/    # Multi-platform playlist importer
+├── components/          # Premium UI components
+├── lib/                 # Core logic & utilities
+└── prisma/              # Database schema & migrations
 ```
 
 ---
 
-## 📌 Future Plans
-
-- [ ] WebSocket support for real-time queue updates
-- [ ] Admin dashboard for creators
-- [ ] Spotify integration
-- [ ] Listener chatroom feature
-
-
-## 🤝 Contributing
-
-Pull requests and feedback are welcome! Let's build a better streaming experience together.
-
-
 ## 📄 License
-
-MIT © 2025 Aakash Joshi
-
-
-Let me know if you'd like to add badges, a demo link, or tailor this for deployment (like Vercel/Render/etc).
-
-```
+MIT © 2025 EchoDeck Team

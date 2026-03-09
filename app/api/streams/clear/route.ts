@@ -2,7 +2,6 @@ import { getServerSession } from "next-auth";
 import { prismaClient } from "@/app/lib/db";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/app/lib/auth";
-import { pusherServer } from "@/app/lib/pusher";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -29,8 +28,6 @@ export async function POST() {
     },
   });
 
-  // Broadcast to all listeners that the queue is cleared
-  await pusherServer.trigger(user.id, "queue-cleared", {});
 
   return new Response("Queue stopped and cleared", { status: 200 });
 }
