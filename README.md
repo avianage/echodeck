@@ -3,7 +3,7 @@
 **EchoDeck** is a high-performance, collaborative streaming queue engine designed for creators and listeners. It allows real-time session synchronization and multi-platform content resolution via YouTube and Spotify.
 
 > [!IMPORTANT]
-> **Video Playback Restrictions**: Due to YouTube's owner restrictions, some videos (e.g., from VEVO, T-Series, or major music labels) cannot be played within the embedded player. This is a platform-level limitation. Creators can use the "Fix Video" tool to manually swap a restricted ID for a working alternative.
+> **Video Playback Restrictions**: Due to YouTube's owner restrictions, some videos (e.g., from VEVO, T-Series, or major music labels) cannot be played within the embedded player. This is a platform-level limitation.
 
 ---
 
