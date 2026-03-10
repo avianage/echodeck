@@ -2,6 +2,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Install build dependencies for yt-dlp-exec and other native modules
+RUN apk add --no-cache python3 build-base g++
+
 # Install dependencies
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -19,6 +22,10 @@ RUN npm run build
 
 # Production stage
 FROM node:20-alpine AS runner
+WORKDIR /app
+
+# Install runtime dependencies for yt-dlp
+RUN apk add --no-cache python3 ffmpeg
 WORKDIR /app
 
 ENV NODE_ENV=production
