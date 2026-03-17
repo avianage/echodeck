@@ -19,12 +19,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
         }
 
-        const user = await prismaClient.user.findUnique({
-            where: { email: session.user.email },
-        });
+        const userId = (session.user as any).id;
 
-        if (!user) {
-            console.error("Sync API: User not found for email:", session.user.email);
+        if (!userId) {
+            console.error("Sync API: User ID not found for email:", session.user.email);
             return NextResponse.json({ message: "User not found" }, { status: 403 });
         }
 
@@ -34,8 +32,8 @@ export async function POST(req: NextRequest) {
         console.log(`📡 Sync Command: ${data.type} at ${data.currentTime}s for creator: ${data.creatorId} (by user: ${user.id})`);
 
         // Only the creator should be able to trigger sync
-        if (user.id !== data.creatorId) {
-            console.warn(`Sync API: Unauthorized attempt. User ${user.id} tried to sync for ${data.creatorId}`);
+        if (userId !== data.creatorId) {
+            console.warn(`Sync API: Unauthorized attempt. User ${userId} tried to sync for ${data.creatorId}`);
             return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
         }
 

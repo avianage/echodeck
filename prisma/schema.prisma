@@ -13,12 +13,17 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  provider  Provider
-  streams   Stream[]  @relation("user")
-  upvotes   Upvote[]
-  added     Stream[]  @relation("addedBy")
+  id               String          @id @default(uuid())
+  email            String          @unique
+  provider         Provider
+  streams          Stream[]        @relation("user")
+  upvotes          Upvote[]
+  added            Stream[]        @relation("addedBy")
+  isPublic         Boolean         @default(true)
+  favorites        Favorite[]      @relation("userFavorites")
+  favoritedBy      Favorite[]      @relation("targetUser")
+  pendingApprovals StreamAccess[]  @relation("streamer")
+  accessGrants      StreamAccess[]  @relation("viewer")
 }
 
 model Stream {
@@ -50,7 +55,34 @@ model CurrentStream {
   updatedAt        DateTime  @updatedAt
 }
 
+model Favorite {
+  id          String   @id @default(uuid())
+  userId      String
+  favoriteId  String
+  user        User     @relation("userFavorites", fields: [userId], references: [id])
+  favorite    User     @relation("targetUser", fields: [favoriteId], references: [id])
+  createdAt   DateTime @default(now())
 
+  @@unique([userId, favoriteId])
+}
+
+model StreamAccess {
+  id          String       @id @default(uuid())
+  streamerId  String
+  viewerId    String
+  status      AccessStatus @default(PENDING)
+  streamer    User         @relation("streamer", fields: [streamerId], references: [id])
+  viewer      User         @relation("viewer", fields: [viewerId], references: [id])
+  createdAt   DateTime     @default(now())
+
+  @@unique([streamerId, viewerId])
+}
+
+enum AccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
 model Upvote {
   id        String    @id @default(uuid())

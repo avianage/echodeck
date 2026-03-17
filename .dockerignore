@@ -19,3 +19,7 @@ README.md
 .dockerignore
 prisma/dev.db
 prisma/dev.db-journal
+
+# Database backups
+*.sql
+backup_*.sql

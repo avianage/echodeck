@@ -11,20 +11,16 @@ export async function POST() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
   }
 
-  const user = await prismaClient.user.findFirst({
-    where: {
-      email: session?.user?.email ?? ""
-    }
-  });
+  const userId = (session.user as any).id;
 
-  if (!user) {
-    console.warn("User not found");
+  if (!userId) {
+    console.warn("User ID not found in session");
     return NextResponse.json({ message: "User not found" }, { status: 403 });
   }
 
   await prismaClient.stream.deleteMany({
     where: {
-      userId: user.id
+      userId: userId
     },
   });
 

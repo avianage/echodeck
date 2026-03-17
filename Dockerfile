@@ -10,6 +10,11 @@ COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm install
 
+# After npm install, verify yt-dlp binary exists and is executable
+RUN test -f ./node_modules/yt-dlp-exec/bin/yt-dlp || \
+    (echo "❌ yt-dlp binary missing after install" && exit 1)
+RUN chmod +x ./node_modules/yt-dlp-exec/bin/yt-dlp
+
 # Copy source code
 COPY . .
 
@@ -47,9 +52,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chown=nextjs:nodejs /app/docker-bootstrap.sh ./docker-bootstrap.sh
 
+# Ensure yt-dlp binary is copied and executable in the runner stage
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/yt-dlp-exec/bin/yt-dlp ./node_modules/yt-dlp-exec/bin/yt-dlp
+
 # Ensure the script is executable
 USER root
-RUN chmod +x ./docker-bootstrap.sh
+RUN chmod +x ./docker-bootstrap.sh ./node_modules/yt-dlp-exec/bin/yt-dlp
 USER nextjs
 
 EXPOSE 3000

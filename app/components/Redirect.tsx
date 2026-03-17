@@ -10,7 +10,7 @@ export function Redirect() {
 
     useEffect(() => {
         if (session?.data?.user) {
-            router.push("/stream")
+            router.push("/dashboard")
         }
     }, [session, router]);
     return null

@@ -10,11 +10,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
     }
 
-    const user = await prismaClient.user.findFirst({
-        where: { email: session.user.email }
-    });
+    const userId = (session.user as any).id;
 
-    if (!user) {
+    if (!userId) {
         return NextResponse.json({ message: "User not found" }, { status: 403 });
     }
 
@@ -34,9 +32,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Only allow the person who added it OR the creator of the page to remove it
-        // For simplicity, let's start with just the person who added it
-        if (stream.addedById !== user.id && stream.userId !== user.id) {
-            return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+        if (stream.addedById !== userId && stream.userId !== userId) {
+            return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
         }
 
         await prismaClient.stream.delete({

@@ -65,8 +65,8 @@ export const authOptions: NextAuthOptions = {
         },
         async session({ session, token }: { session: any; token: any }) { // eslint-disable-line @typescript-eslint/no-explicit-any
             try {
-                if (session.user && token.uid) {
-                    session.user.id = token.uid;
+                if (session.user) {
+                    session.user.id = token.sub || token.uid;
                 }
                 session.accessToken = token.accessToken;
                 session.provider = token.provider;

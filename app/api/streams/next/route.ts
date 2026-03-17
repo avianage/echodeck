@@ -11,20 +11,16 @@ export async function GET() {
         return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
     }
 
-    const user = await prismaClient.user.findFirst({
-        where: {
-            email: session?.user?.email ?? ""
-        }
-    });
+    const userId = (session.user as any).id;
 
-    if (!user) {
-        console.warn("User not found");
+    if (!userId) {
+        console.warn("User ID not found in session");
         return NextResponse.json({ message: "User not found" }, { status: 403 });
     }
 
     const mostUpvotedStream = await prismaClient.stream.findFirst({
         where: {
-            userId: user.id,
+            userId: userId,
             played: false
         },
         orderBy: [
@@ -46,14 +42,14 @@ export async function GET() {
     await Promise.all([
         prismaClient.currentStream.upsert({
             where: {
-                userId: user.id
+                userId: userId
             },
             update: {
-                userId: user.id,
+                userId: userId,
                 streamId: mostUpvotedStream.id
             },
             create: {
-                userId: user.id,
+                userId: userId,
                 streamId: mostUpvotedStream.id
             }
         }),

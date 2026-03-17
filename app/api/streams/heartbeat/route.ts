@@ -22,32 +22,35 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
         }
 
-        const user = await prismaClient.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ message: "User not found" }, { status: 403 });
-        }
+        const userId = (session.user as any).id;
 
         const body = await req.json();
         const data = HeartbeatSchema.parse(body);
 
         // If it's the creator, update the state
-        if (user.id === data.creatorId && data.currentTime !== undefined) {
-            await (prismaClient.currentStream as any).upsert({
-                where: { userId: data.creatorId },
-                update: {
-                    currentTime: data.currentTime,
-                    isPaused: data.isPaused ?? false,
-                    updatedAt: new Date(),
-                },
-                create: {
-                    userId: data.creatorId,
-                    currentTime: data.currentTime,
-                    isPaused: data.isPaused ?? false,
-                },
+        if (userId === data.creatorId && data.currentTime !== undefined) {
+            const existing = await prismaClient.currentStream.findUnique({
+                where: { userId: data.creatorId }
             });
+
+            const timeDrift = Math.abs((existing?.currentTime ?? 0) - data.currentTime);
+            const pauseChanged = existing?.isPaused !== data.isPaused;
+
+            if (timeDrift > 1 || pauseChanged || !existing) {
+                await prismaClient.currentStream.upsert({
+                    where: { userId: data.creatorId },
+                    update: {
+                        currentTime: data.currentTime,
+                        isPaused: data.isPaused ?? false,
+                        updatedAt: new Date(),
+                    },
+                    create: {
+                        userId: data.creatorId,
+                        currentTime: data.currentTime,
+                        isPaused: data.isPaused ?? false,
+                    },
+                });
+            }
             return NextResponse.json({ message: "Heartbeat updated" });
         }
 
@@ -61,8 +64,17 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "No active stream" }, { status: 404 });
         }
 
+        // Calculate server-side offset so client clock skew doesn't matter
+        const serverNow = Date.now();
+        const updatedAt = new Date(currentStream.updatedAt).getTime();
+        const serverStaleness = (serverNow - updatedAt) / 1000;
+        const serverComputedTime = currentStream.isPaused
+            ? currentStream.currentTime
+            : currentStream.currentTime + serverStaleness;
+
         return NextResponse.json({
             currentTime: currentStream.currentTime,
+            computedTime: serverComputedTime,
             isPaused: currentStream.isPaused,
             updatedAt: currentStream.updatedAt,
             stream: currentStream.stream

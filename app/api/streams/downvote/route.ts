@@ -37,6 +37,25 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Invalid stream ID" }, { status: 404 });
         }
 
+        const creator = await prismaClient.user.findUnique({
+            where: { id: stream.userId },
+            select: { isPublic: true }
+        });
+
+        if (creator && !creator.isPublic && user.id !== stream.userId) {
+            const access = await prismaClient.streamAccess.findUnique({
+                where: {
+                    streamerId_viewerId: {
+                        streamerId: stream.userId,
+                        viewerId: user.id
+                    }
+                }
+            });
+            if (access?.status !== "APPROVED") {
+                return NextResponse.json({ message: "Access denied" }, { status: 403 });
+            }
+        }
+
         // 🔍 Check if user has upvoted this stream
         const existingUpvote = await prismaClient.upvote.findUnique({
             where: {

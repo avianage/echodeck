@@ -3,12 +3,18 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 // @ts-expect-error No Types available
 import YouTubeSearchApi from "youtube-search-api";
+import { isRateLimited } from "@/app/lib/rateLimit";
 
 export async function GET(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
-        if (!session) {
+        if (!session || !session.user?.email) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
+        }
+
+        const limitKey = `search:${session.user.email}`;
+        if (isRateLimited(limitKey, 30, 60 * 1000)) {
+            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
         }
 
         const { searchParams } = new URL(req.url);

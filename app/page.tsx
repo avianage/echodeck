@@ -5,7 +5,6 @@ import { LucideIcon, PlayCircle, Users, Radio, Headphones, Sparkles, MessageSqua
 import { Appbar } from "./components/Appbar";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
-import { Redirect } from "./components/Redirect";
 import { motion } from "framer-motion";
 
 export default function LandingPage() {
@@ -18,7 +17,6 @@ export default function LandingPage() {
       <div className="px-8 md:px-20 py-4 relative z-10">
         <Appbar />
       </div>
-      <Redirect />
 
       {/* Hero Section */}
       <main className="flex flex-col items-center justify-center pt-20 pb-16 md:pt-32 md:pb-24 lg:pt-40 lg:pb-32 text-center relative z-10">
@@ -44,7 +42,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap justify-center items-center gap-6 pt-4">
             <Button
               className="bg-blue-600 text-white hover:bg-blue-700 h-14 px-10 text-lg rounded-full transition-all hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
-              onClick={() => signIn()}
+              onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
             >
               Start Your Party
             </Button>

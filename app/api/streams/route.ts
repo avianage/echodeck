@@ -11,6 +11,8 @@ import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
 // @ts-expect-error No Types available
 import spotifyUrlInfo from "spotify-url-info";
 
+import { isRateLimited } from "@/app/lib/rateLimit";
+
 const { getTracks } = spotifyUrlInfo(fetch as any);
 
 const CreateStreamSchema = z.object({
@@ -18,11 +20,21 @@ const CreateStreamSchema = z.object({
     url: z.string()
 })
 
-const MAX_QUEUE_LENGTH = 50;
+const MAX_QUEUE_LENGTH = 200;
 
 
 export async function POST(req: NextRequest) {
     try {
+        const session = await getServerSession(authOptions);
+
+        if (!session || !session.user?.email) {
+            return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
+        }
+
+        const limitKey = `add:${session.user.email}`;
+        if (isRateLimited(limitKey, 20, 60 * 1000)) {
+            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+        }
         const data = CreateStreamSchema.parse(await req.json());
         const isYt = data.url.match(YT_REGEX);
         const isSpotify = data.url.match(SPOTIFY_TRACK_REGEX);
@@ -178,8 +190,6 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const session = await getServerSession(authOptions);
-
         if (!session?.user?.email) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
         }
@@ -192,6 +202,30 @@ export async function POST(req: NextRequest) {
 
         if (!user) {
             return NextResponse.json({ message: "User not found" }, { status: 403 });
+        }
+
+        const creator = await prismaClient.user.findUnique({
+            where: { id: data.creatorId },
+            select: { isPublic: true }
+        });
+
+        if (!creator) {
+            return NextResponse.json({ message: "Creator not found" }, { status: 404 });
+        }
+
+        // Check access if private
+        if (!creator.isPublic && user.id !== data.creatorId) {
+            const access = await (prismaClient as any).streamAccess.findUnique({
+                where: {
+                    streamerId_viewerId: {
+                        streamerId: data.creatorId,
+                        viewerId: user.id
+                    }
+                }
+            });
+            if (access?.status !== "APPROVED") {
+                return NextResponse.json({ message: "Access denied" }, { status: 403 });
+            }
         }
 
         const existingActiveStream = await prismaClient.stream.count({
@@ -237,39 +271,82 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-    const creatorId = req.nextUrl.searchParams.get("creatorId");
-    const session = await getServerSession(authOptions);
-
-    if (!session || !session.user?.email) {
-        return NextResponse.json({
-            message: "Unauthenticated"
-        }, {
-            status: 403
-        });
-    }
-
-    const user = await prismaClient.user.findFirst({
-        where: {
-            email: session.user.email
-        }
-    });
-
-    if (!user) {
-        return NextResponse.json({
-            message: "User not found"
-        }, {
-            status: 403
-        });
-    }
-
-
     try {
+        const creatorId = req.nextUrl.searchParams.get("creatorId");
+        const session = await getServerSession(authOptions);
+
+        if (!session || !session.user?.email) {
+            return NextResponse.json({
+                message: "Unauthenticated"
+            }, {
+                status: 403
+            });
+        }
+
+        const user = await prismaClient.user.findFirst({
+            where: {
+                email: session.user.email
+            }
+        });
+
+        if (!user) {
+            return NextResponse.json({
+                message: "User not found"
+            }, {
+                status: 403
+            });
+        }
+
         if (!creatorId) {
             return NextResponse.json({
                 message: "Error: No creatorId provided"
             }, {
                 status: 411
             })
+        }
+
+        const creator = await prismaClient.user.findUnique({
+            where: { id: creatorId },
+            select: { id: true, email: true, isPublic: true }
+        });
+
+        if (!creator) {
+            return NextResponse.json({ message: "Creator not found" }, { status: 404 });
+        }
+
+        // Check access if private
+        let accessStatus: string | null = "APPROVED";
+        if (!(creator as any).isPublic && user.id !== (creator as any).id) {
+            const resetAccess = req.nextUrl.searchParams.get("resetAccess") === "true";
+            
+            if (resetAccess) {
+                console.log(`🔄 Resetting access for user ${user.id} on creator ${(creator as any).id}`);
+                await (prismaClient as any).streamAccess.upsert({
+                    where: {
+                        streamerId_viewerId: {
+                            streamerId: (creator as any).id,
+                            viewerId: user.id
+                        }
+                    },
+                    update: { status: "PENDING" },
+                    create: {
+                        streamerId: (creator as any).id,
+                        viewerId: user.id,
+                        status: "PENDING"
+                    }
+                });
+                accessStatus = "PENDING";
+            } else {
+                const access = await (prismaClient as any).streamAccess.findUnique({
+                    where: {
+                        streamerId_viewerId: {
+                            streamerId: (creator as any).id,
+                            viewerId: user.id
+                        }
+                    }
+                });
+                accessStatus = access?.status || null;
+            }
         }
 
         const [streams, activeStream] = await Promise.all([
@@ -319,7 +396,13 @@ export async function GET(req: NextRequest) {
                 haveUpvoted: rest.upvotes.length ? true : false
             })),
             activeStream,
-            currentUserId: user.id
+            currentUserId: user.id,
+            creator: {
+                id: creator.id,
+                email: creator.email,
+                isPublic: creator.isPublic
+            },
+            accessStatus
         });
     } catch (e: unknown) {
         console.error("❌ GET /api/streams failed:", e);
