@@ -105,7 +105,7 @@ export default function Dashboard() {
                         <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
                             Welcome, {session.user.name?.split(' ')[0] || 'DJ'}
                         </h1>
-                        <p className="text-gray-400 mt-2">The deck is ready. What's your move?</p>
+                        <p className="text-gray-400 mt-2">The deck is ready. What&apos;s your move?</p>
                     </div>
                 </div>
 
@@ -161,7 +161,7 @@ export default function Dashboard() {
                                         </div>
                                         <div className="space-y-2">
                                             <h3 className="text-2xl font-bold text-white">Join a Stream</h3>
-                                            <p className="text-gray-400 text-sm max-w-[200px]">Jump into a friend's party and start voting.</p>
+                                            <p className="text-gray-400 text-sm max-w-[200px]">Jump into a friend&apos;s party and start voting.</p>
                                         </div>
                                         <div className="mt-4 flex items-center gap-2 text-xs font-bold text-purple-400 uppercase tracking-widest group-hover:gap-3 transition-all">
                                             Connect <Plus className="w-4 h-4" />

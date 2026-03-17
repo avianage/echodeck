@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaClient } from "@/app/lib/db";
@@ -389,7 +388,6 @@ export async function GET(req: NextRequest) {
         ]);
 
         return NextResponse.json({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             streams: streams.map(({ _count, ...rest }: any) => ({
                 ...rest,
                 upvotes: _count.upvotes,

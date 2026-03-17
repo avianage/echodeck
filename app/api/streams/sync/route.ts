@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const data = SyncSchema.parse(body);
 
-        console.log(`📡 Sync Command: ${data.type} at ${data.currentTime}s for creator: ${data.creatorId} (by user: ${user.id})`);
+        console.log(`📡 Sync Command: ${data.type} at ${data.currentTime}s for creator: ${data.creatorId} (by user: ${userId})`);
 
         // Only the creator should be able to trigger sync
         if (userId !== data.creatorId) {

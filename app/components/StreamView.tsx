@@ -1,5 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
@@ -161,6 +159,71 @@ export default function StreamView({
         if (stale) refreshStreams();
     }, [refreshStreams]);
 
+    const handleSubmit = useCallback(async (e?: React.FormEvent | KeyboardEvent) => {
+        if (e && 'preventDefault' in e) e.preventDefault();
+        if (!videoLink.trim()) return;
+
+        const isUrl = videoLink.match(YT_REGEX) || videoLink.match(SPOTIFY_TRACK_REGEX) || videoLink.match(PLAYLIST_REGEX);
+
+        if (!isUrl) {
+            handleSearch(videoLink);
+            return;
+        }
+
+        const playlistMatch = videoLink.match(PLAYLIST_REGEX) || videoLink.match(SPOTIFY_PLAYLIST_REGEX);
+        if (playlistMatch) {
+            const playlistId = playlistMatch[1];
+            setLoading(true);
+            try {
+                const res = await fetch("/api/streams/playlist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ playlistId, url: videoLink })
+                });
+                if (!res.ok) throw new Error("Failed to fetch playlist");
+                const data = await res.json();
+                setPlaylistVideos(data.videos);
+                setPlaylistTitle(data.title);
+                setIsPlaylistModalOpen(true);
+                setVideoLink("");
+            } catch {
+                toast.error("Could not load playlist. Make sure it's public.");
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await fetch("/api/streams", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    creatorId: creatorId,
+                    url: videoLink
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const errorMsg = data.message || "Failed to add video";
+                toast.error(errorMsg);
+                addLog("error", `Failed: ${videoLink} - ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
+            setQueue([...queue, data]);
+            setVideoLink('');
+            toast.success("Added to queue!");
+            addLog("success", `Added single video: ${data.title}`);
+            refreshIfStale();
+        } catch (err: any) {
+            console.error("Error adding video:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, [videoLink, creatorId, queue, refreshIfStale]);
+
+
     useEffect(() => {
         console.log("🔵 StreamView mounted");
 
@@ -178,7 +241,7 @@ export default function StreamView({
         };
         window.addEventListener("keydown", handleEnter);
         return () => window.removeEventListener("keydown", handleEnter);
-    }, [videoLink]);
+    }, [handleSubmit]);
 
 
     const isFirstLoad = useRef(true);
@@ -394,70 +457,6 @@ export default function StreamView({
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!videoLink.trim()) return;
-
-        const isUrl = videoLink.match(YT_REGEX) || videoLink.match(SPOTIFY_TRACK_REGEX) || videoLink.match(PLAYLIST_REGEX);
-
-        if (!isUrl) {
-            // If it's not a URL, treat it as a search query
-            handleSearch(videoLink);
-            return;
-        }
-
-        const playlistMatch = videoLink.match(PLAYLIST_REGEX) || videoLink.match(SPOTIFY_PLAYLIST_REGEX);
-        if (playlistMatch) {
-            const playlistId = playlistMatch[1];
-            setLoading(true);
-            try {
-                const res = await fetch("/api/streams/playlist", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ playlistId, url: videoLink })
-                });
-                if (!res.ok) throw new Error("Failed to fetch playlist");
-                const data = await res.json();
-                setPlaylistVideos(data.videos);
-                setPlaylistTitle(data.title);
-                setIsPlaylistModalOpen(true);
-                setVideoLink("");
-            } catch {
-                toast.error("Could not load playlist. Make sure it's public.");
-            } finally {
-                setLoading(false);
-            }
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const res = await fetch("/api/streams", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    creatorId: creatorId,
-                    url: videoLink
-                })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                const errorMsg = data.message || "Failed to add video";
-                toast.error(errorMsg);
-                addLog("error", `Failed: ${videoLink} - ${errorMsg}`);
-                throw new Error(errorMsg);
-            }
-            setQueue([...queue, data]);
-            setVideoLink('');
-            toast.success("Added to queue!");
-            addLog("success", `Added single video: ${data.title}`);
-            refreshIfStale();
-        } catch (err: any) {
-            console.error("Error adding video:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const resolveStream = async (videoId: string) => {
         try {
@@ -825,7 +824,7 @@ export default function StreamView({
                     <Lock className="w-16 h-16 text-yellow-500 mb-6 animate-bounce" />
                     <h3 className="text-2xl font-bold text-white mb-2">Private Stream</h3>
                     <p className="text-gray-400 mb-8 max-w-sm text-center px-4">
-                        This stream is private. You need the streamer's approval to join and listen.
+                        This stream is private. You need the streamer&apos;s approval to join and listen.
                     </p>
                     {accessStatus === "PENDING" ? (
                         <div className="px-6 py-3 bg-yellow-500/10 border border-yellow-500/30 rounded-full text-yellow-500 font-bold flex items-center gap-2">
