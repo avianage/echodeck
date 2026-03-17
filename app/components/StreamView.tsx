@@ -814,7 +814,7 @@ export default function StreamView({
     };
 
     return (
-        <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 text-white overflow-x-hidden">
+        <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 pb-safe text-white overflow-x-hidden">
             <div className="mb-8">
                 <Appbar />
             </div>

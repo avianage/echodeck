@@ -93,7 +93,7 @@ export default function Dashboard() {
     const hasFavorites = favorites.length > 0;
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white selection:bg-blue-500/30 overflow-x-hidden">
+        <div className="min-h-screen bg-gray-950 text-white selection:bg-blue-500/30 overflow-x-hidden pb-safe">
             <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.1),transparent_50%)]" />
             <div className="fixed top-0 left-0 right-0 z-50">
                 <Appbar />
