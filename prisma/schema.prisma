@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,70 +6,44 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── User ────────────────────────────────────────────────────────────────────
-
 model User {
-  id                    String    @id @default(cuid())
-  partyCode             String?   @unique @default(uuid())
-  name                  String?
-  email                 String?   @unique
-  emailVerified         DateTime?
-  username              String?   @unique
+  id                    String             @id @default(cuid())
+  email                 String?            @unique
+  username              String?            @unique
   displayName           String?
   image                 String?
-  createdAt             DateTime  @default(now())
-
-  // Username update cooldown
+  createdAt             DateTime           @default(now())
   usernameUpdatedAt     DateTime?
-
-  // Platform-level RBAC
-  platformRole          PlatformRole @default(MEMBER)
-
-  // Stream & Social Privacy
-  allowFriendRequests   Boolean   @default(true)
-
-  // Platform ban/timeout
-  isBanned              Boolean   @default(false)
+  platformRole          PlatformRole       @default(MEMBER)
+  isBanned              Boolean            @default(false)
   banReason             String?
   bannedUntil           DateTime?
-
-  // Spotify linking (separate from OAuth sign-in)
-  spotifyConnected      Boolean   @default(false)
+  spotifyConnected      Boolean            @default(false)
   spotifyAccessToken    String?
   spotifyRefreshToken   String?
   spotifyTokenExpiresAt DateTime?
-
-  // Account deletion soft marker
   deletedAt             DateTime?
-
-  // Legacy fields (kept for backwards compatibility)
   provider              Provider?
-  isPublic              Boolean   @default(true)
-
-  // Relations
+  isPublic              Boolean            @default(true)
+  emailVerified         DateTime?
+  name                  String?
+  allowFriendRequests   Boolean            @default(true)
+  partyCode             String?            @unique @default(uuid())
   accounts              Account[]
-  sessions              Session[]
-  streams               Stream[]        @relation("user")
-  added                 Stream[]        @relation("addedBy")
-  upvotes               Upvote[]
-  favorites             Favorite[]      @relation("userFavorites")
-  favoritedBy           Favorite[]      @relation("targetUser")
-  pendingApprovals      StreamAccess[]  @relation("streamer")
-  accessGrants          StreamAccess[]  @relation("viewer")
-  sessionMembers        SessionMember[]
-  sentRequests          Friendship[]    @relation("SentRequests")
-  receivedRequests      Friendship[]    @relation("ReceivedRequests")
-  listeningActivity     ListeningActivity?
   currentStream         CurrentStream?
+  favoritedBy           Favorite[]         @relation("targetUser")
+  favorites             Favorite[]         @relation("userFavorites")
+  receivedRequests      Friendship[]       @relation("ReceivedRequests")
+  sentRequests          Friendship[]       @relation("SentRequests")
+  listeningActivity     ListeningActivity?
+  sessions              Session[]
+  sessionMembers        SessionMember[]
+  added                 Stream[]           @relation("addedBy")
+  streams               Stream[]           @relation("user")
+  pendingApprovals      StreamAccess[]     @relation("streamer")
+  accessGrants          StreamAccess[]     @relation("viewer")
+  upvotes               Upvote[]
 }
-
-enum PlatformRole {
-  OWNER
-  MEMBER
-  CREATOR
-}
-
-// ─── NextAuth ─────────────────────────────────────────────────────────────────
 
 model Account {
   id                String  @id @default(cuid())
@@ -83,15 +51,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -101,8 +68,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -113,75 +79,57 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ─── Stream ───────────────────────────────────────────────────────────────────
-
 model Stream {
-  id          String     @id @default(cuid())
-  type        StreamType
-  url         String
-  extractedId String
-  smallImg    String     @default("")
-  title       String     @default("")
-  bigImg      String     @default("")
-  active      Boolean    @default(true)
-  played      Boolean    @default(false)
-  playedTs    DateTime?
-  createdAt   DateTime   @default(now())
-
-  // Discovery / live fields
-  isPublic    Boolean    @default(false)
-  isLive      Boolean    @default(false)
-  startedAt   DateTime?
-  endedAt     DateTime?
-  viewerCount Int        @default(0)
-
-  userId    String
-  addedById String
-  user      User   @relation(fields: [userId], references: [id], name: "user")
-  addedBy   User   @relation(fields: [addedById], references: [id], name: "addedBy")
-
-  upvotes       Upvote[]
+  id            String         @id @default(cuid())
+  type          StreamType
+  url           String
+  extractedId   String
+  smallImg      String         @default("")
+  title         String         @default("")
+  bigImg        String         @default("")
+  active        Boolean        @default(true)
+  played        Boolean        @default(false)
+  playedTs      DateTime?
+  createdAt     DateTime       @default(now())
+  isPublic      Boolean        @default(false)
+  isLive        Boolean        @default(false)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  viewerCount   Int            @default(0)
+  userId        String
+  addedById     String
   currentStream CurrentStream?
+  addedBy       User           @relation("addedBy", fields: [addedById], references: [id])
+  user          User           @relation("user", fields: [userId], references: [id])
+  upvotes       Upvote[]
 }
 
 model CurrentStream {
   userId      String   @id
   streamId    String?  @unique
-  stream      Stream?  @relation(fields: [streamId], references: [id])
-  title       String?  // Custom session title
-  genre       String?  // Custom session genre
   currentTime Float    @default(0)
   isPaused    Boolean  @default(false)
   updatedAt   DateTime @updatedAt
   viewerCount Int      @default(0)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genre       String?
+  title       String?
+  stream      Stream?  @relation(fields: [streamId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ─── Session Members (per-stream RBAC + scoped bans) ─────────────────────────
-
 model SessionMember {
-  id        String     @id @default(cuid())
-  userId    String
-  creatorId String
-  role      StreamRole @default(MEMBER)
-  joinedAt  DateTime   @default(now())
-
-  isBanned    Boolean   @default(false)
+  id          String     @id @default(cuid())
+  userId      String
+  creatorId   String
+  role        StreamRole @default(MEMBER)
+  joinedAt    DateTime   @default(now())
+  isBanned    Boolean    @default(false)
   banReason   String?
   bannedUntil DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, creatorId])
 }
-
-enum StreamRole {
-  MODERATOR
-  MEMBER
-}
-
-// ─── Friends ──────────────────────────────────────────────────────────────────
 
 model Friendship {
   id          String       @id @default(cuid())
@@ -190,20 +138,11 @@ model Friendship {
   status      FriendStatus @default(PENDING)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-
-  requester User @relation("SentRequests", fields: [requesterId], references: [id], onDelete: Cascade)
-  addressee User @relation("ReceivedRequests", fields: [addresseeId], references: [id], onDelete: Cascade)
+  addressee   User         @relation("ReceivedRequests", fields: [addresseeId], references: [id], onDelete: Cascade)
+  requester   User         @relation("SentRequests", fields: [requesterId], references: [id], onDelete: Cascade)
 
   @@unique([requesterId, addresseeId])
 }
-
-enum FriendStatus {
-  PENDING
-  ACCEPTED
-  BLOCKED
-}
-
-// ─── Listening Activity ───────────────────────────────────────────────────────
 
 model ListeningActivity {
   id        String   @id @default(cuid())
@@ -212,20 +151,16 @@ model ListeningActivity {
   songTitle String?
   songId    String?
   updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
-// ─── Legacy / Existing Models ─────────────────────────────────────────────────
 
 model Favorite {
   id         String   @id @default(cuid())
   userId     String
   favoriteId String
   createdAt  DateTime @default(now())
-
-  user     User @relation("userFavorites", fields: [userId], references: [id])
-  favorite User @relation("targetUser", fields: [favoriteId], references: [id])
+  favorite   User     @relation("targetUser", fields: [favoriteId], references: [id])
+  user       User     @relation("userFavorites", fields: [userId], references: [id])
 
   @@unique([userId, favoriteId])
 }
@@ -236,9 +171,8 @@ model StreamAccess {
   viewerId   String
   status     AccessStatus @default(PENDING)
   createdAt  DateTime     @default(now())
-
-  streamer User @relation("streamer", fields: [streamerId], references: [id])
-  viewer   User @relation("viewer", fields: [viewerId], references: [id])
+  streamer   User         @relation("streamer", fields: [streamerId], references: [id])
+  viewer     User         @relation("viewer", fields: [viewerId], references: [id])
 
   @@unique([streamerId, viewerId])
 }
@@ -247,14 +181,37 @@ model Upvote {
   id       String @id @default(cuid())
   userId   String
   streamId String
-
-  user   User   @relation(fields: [userId], references: [id])
-  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id])
 
   @@unique([userId, streamId])
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+model StreamEvent {
+  id        String          @id @default(cuid())
+  creatorId String
+  type      StreamEventType
+  message   String
+  createdAt DateTime        @default(now())
+  expiresAt DateTime
+}
+
+enum PlatformRole {
+  MEMBER
+  CREATOR
+  OWNER
+}
+
+enum StreamRole {
+  MODERATOR
+  MEMBER
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
 
 enum StreamType {
   Spotify
@@ -272,26 +229,15 @@ enum AccessStatus {
   REJECTED
 }
 
-// ─── Events ───────────────────────────────────────────────────────────────────
-
-model StreamEvent {
-    id        String          @id @default(cuid())
-    creatorId String
-    type      StreamEventType
-    message   String
-    createdAt DateTime        @default(now())
-    expiresAt DateTime        // events expire after 30s
-}
-
 enum StreamEventType {
-    USER_BANNED_PLATFORM
-    USER_BANNED_STREAM
-    USER_TIMED_OUT_PLATFORM
-    USER_TIMED_OUT_STREAM
-    CREATOR_ROLE_REVOKED
-    STREAM_FORCE_CLOSED
-    MOD_PROMOTED
-    MOD_DEMOTED
-    SONG_REMOVED_BY_MOD
-    SONG_SKIPPED_BY_CREATOR
+  USER_BANNED_PLATFORM
+  USER_BANNED_STREAM
+  USER_TIMED_OUT_PLATFORM
+  USER_TIMED_OUT_STREAM
+  CREATOR_ROLE_REVOKED
+  STREAM_FORCE_CLOSED
+  MOD_PROMOTED
+  MOD_DEMOTED
+  SONG_REMOVED_BY_MOD
+  SONG_SKIPPED_BY_CREATOR
 }
