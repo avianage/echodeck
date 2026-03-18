@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import { YT_REGEX } from "@/app/lib/utils";
+import Image from "next/image";
 
 interface SearchBarProps {
     videoLink: string;
@@ -45,11 +46,14 @@ export function SearchBar({ videoLink, searchResults, isSearching, loading, onCh
                                     onClick={() => onSelectResult(video)}
                                     className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left border-b border-gray-800 last:border-0"
                                 >
-                                    <img
-                                        src={video.thumbnail}
-                                        alt=""
-                                        className="w-16 h-10 rounded object-cover flex-shrink-0"
-                                    />
+                                    <div className="relative w-16 h-10 flex-shrink-0">
+                                        <Image
+                                            src={video.thumbnail}
+                                            alt=""
+                                            fill
+                                            className="rounded object-cover"
+                                        />
+                                    </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-white truncate">{video.title}</p>
                                         <p className="text-xs text-gray-400 truncate">{video.channelTitle}</p>

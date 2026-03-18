@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ListPlus, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 interface PlaylistModalProps {
     isOpen: boolean;
@@ -41,10 +42,11 @@ export function PlaylistModal({ isOpen, title, videos, onClose, onAddOne, onAddA
                                 <div key={`${video.id}-${index}`} className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-gray-800 hover:bg-white/10 transition-all">
                                     <div className="w-24 h-14 relative flex-shrink-0">
                                         {video.thumbnail ? (
-                                            <img
+                                            <Image
                                                 src={video.thumbnail}
                                                 alt={video.title}
-                                                className="rounded-lg object-cover w-full h-full"
+                                                fill
+                                                className="rounded-lg object-cover"
                                             />
                                         ) : (
                                             <div className="w-full h-full bg-gray-800 rounded-lg" />

@@ -73,6 +73,7 @@ export default function StreamView({
     const [heartbeatFailCount, setHeartbeatFailCount] = useState(0);
     const [isResolving, setIsResolving] = useState(false);
     const lastRefreshRef = useRef<number>(0);
+    const lastAccessPollRef = useRef<number>(0);
     const MAX_HEARTBEAT_FAILURES = 3;
     const debouncedVideoLink = useDebounce(videoLink, 300);
 
@@ -116,8 +117,14 @@ export default function StreamView({
                 method: "GET",
                 credentials: "include",
             });
+
+            if (!res.ok) {
+                console.warn("Stream fetch failed:", res.status, res.statusText);
+                return;
+            }
+
             const json = await res.json();
-            setQueue(json.streams.sort((a: any, b: any) => {
+            setQueue((json.streams ?? []).sort((a: any, b: any) => {
                 if (a.upvotes !== b.upvotes) {
                     return b.upvotes - a.upvotes;
                 }
@@ -126,12 +133,6 @@ export default function StreamView({
             setCurrentUserId(json.currentUserId);
             setCreator(json.creator);
             setAccessStatus(json.accessStatus);
-
-            // Check if creator is already favorited
-            const favRes = await fetch("/api/user/favorites");
-            const favData = await favRes.json();
-            const alreadyFav = favData.favorites?.some((f: any) => f.id === creatorId);
-            setIsFavorite(!!alreadyFav);
 
             setCurrentVideo(video => {
                 if (!json.activeStream?.stream) {
@@ -143,11 +144,25 @@ export default function StreamView({
                 return json.activeStream.stream
             });
 
-            // If streamer, fetch pending requests
+            // Non-blocking: check if creator is already favorited
+            fetch("/api/user/favorites")
+                .then(r => r.ok ? r.json() : null)
+                .then(favData => {
+                    if (!favData) return;
+                    const alreadyFav = favData.favorites?.some((f: any) => f.id === creatorId);
+                    setIsFavorite(!!alreadyFav);
+                })
+                .catch(() => { /* favorites fetch failed silently */ });
+
+            // If streamer, poll pending requests at most once every 30s
             if (json.currentUserId === creatorId) {
-                const reqsRes = await fetch("/api/streams/access");
-                const reqsData = await reqsRes.json();
-                setPendingRequests(reqsData.requests || []);
+                const now = Date.now();
+                if (now - lastAccessPollRef.current > 30_000) {
+                    lastAccessPollRef.current = now;
+                    const reqsRes = await fetch("/api/streams/access");
+                    const reqsData = await reqsRes.json();
+                    setPendingRequests(reqsData.requests || []);
+                }
             }
         } catch (error) {
             console.error("Error Fetching Stream: ", error)
@@ -268,11 +283,15 @@ export default function StreamView({
                             });
                         }
 
-                        // Fast Polling for pending requests ONLY
-                        const reqsRes = await fetch("/api/streams/access");
-                        if (reqsRes.ok) {
-                            const reqsData = await reqsRes.json();
-                            setPendingRequests(reqsData.requests || []);
+                        // Poll pending requests every 5s so streamer sees requests quickly
+                        const now = Date.now();
+                        if (now - lastAccessPollRef.current > 5_000) {
+                            lastAccessPollRef.current = now;
+                            const reqsRes = await fetch("/api/streams/access");
+                            if (reqsRes.ok) {
+                                const reqsData = await reqsRes.json();
+                                setPendingRequests(reqsData.requests || []);
+                            }
                         }
                     } else if (isJoined) {
                     // Listener pulls state from DB
@@ -307,6 +326,9 @@ export default function StreamView({
                             refreshStreams();
                         }
                     }
+                } else {
+                    // Viewer waiting for approval — poll refreshStreams to pick up access changes
+                    refreshStreams();
                 }
 
                 // If we reach here, heartbeat succeeded
@@ -819,7 +841,7 @@ export default function StreamView({
                 <Appbar />
             </div>
 
-            {accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
+            {!pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
                 <div className="flex-1 flex flex-col items-center justify-center py-20 bg-black/40 backdrop-blur-md rounded-xl border border-gray-800 my-8">
                     <Lock className="w-16 h-16 text-yellow-500 mb-6 animate-bounce" />
                     <h3 className="text-2xl font-bold text-white mb-2">Private Stream</h3>

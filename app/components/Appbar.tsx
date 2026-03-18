@@ -5,6 +5,8 @@ import Image from "next/image";
 
 import Link from "next/link";
 
+import { InstallPrompt } from "./InstallPrompt";
+
 export function Appbar() {
   const session = useSession();
 
@@ -26,6 +28,7 @@ export function Appbar() {
         </div>
       </Link>
       <div className="flex items-center gap-6">
+        <InstallPrompt />
         {session.data?.user && (
           <nav className="hidden md:flex items-center gap-6 mr-4">
             <Link href="/dashboard" className="text-sm font-medium text-gray-400 hover:text-white transition-colors">Dashboard</Link>

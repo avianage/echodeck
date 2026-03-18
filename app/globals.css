@@ -72,3 +72,24 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+:root {
+  --titlebar-area-x: env(titlebar-area-x, 0px);
+  --titlebar-area-width: env(titlebar-area-width, 100%);
+  --titlebar-area-height: env(titlebar-area-height, 0px);
+}
+
+.titlebar-container {
+  position: fixed;
+  top: env(titlebar-area-y, 0px);
+  left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 30px);
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+
+.titlebar-content {
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}

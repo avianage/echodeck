@@ -1,6 +1,7 @@
 import { Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 interface Video {
     id: string;
@@ -43,10 +44,11 @@ export function QueueSection({ queue, currentUserId, creatorId, onVote, onRemove
                             <CardContent className="p-3 flex items-center gap-4">
                                 <div className="w-20 h-12 relative flex-shrink-0">
                                     {video.extractedId ? (
-                                        <img
+                                        <Image
                                             src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`}
                                             alt={video.title}
-                                            className="rounded object-cover w-full h-full"
+                                            fill
+                                            className="rounded object-cover"
                                         />
                                     ) : (
                                         <div className="w-full h-full bg-gray-800 rounded" />

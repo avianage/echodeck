@@ -11,6 +11,12 @@
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "theme_color": "#030712",
@@ -18,5 +24,34 @@
   "display": "standalone",
   "orientation": "portrait",
   "scope": "/",
-  "start_url": "/"
+  "start_url": "/",
+  "display_override": ["window-controls-overlay"],
+  "shortcuts": [
+    {
+      "name": "Create Session",
+      "url": "/stream",
+      "description": "Start a new EchoDeck session"
+    },
+    {
+      "name": "Join Session",
+      "url": "/dashboard",
+      "description": "Join an existing EchoDeck party"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "EchoDeck Mobile UI"
+    },
+    {
+      "src": "/screenshots/desktop.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "EchoDeck Desktop Dashboard"
+    }
+  ]
 }

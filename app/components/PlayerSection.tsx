@@ -1,5 +1,6 @@
 import React from "react";
 import ReactPlayer from "react-player";
+import Image from "next/image";
 import { Lock, Users, CheckCircle, XCircle, Play, VolumeX, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -93,10 +94,11 @@ export function PlayerSection({
             <div className="w-full">
                 <div className="relative w-full aspect-video md:h-[450px]">
                     {currentVideo.bigImg ? (
-                        <img
+                        <Image
                             src={currentVideo.bigImg}
                             alt={currentVideo.title}
-                            className="object-contain w-full h-full"
+                            fill
+                            className="object-contain"
                         />
                     ) : (
                         <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500">No Image</div>
@@ -146,11 +148,14 @@ export function PlayerSection({
                 )}
                 {resolvedUrl ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-black gap-4 p-6">
-                        <img
-                            src={currentVideo.bigImg}
-                            alt={currentVideo.title}
-                            className="max-h-64 object-contain rounded-xl opacity-80"
-                        />
+                        <div className="relative w-full h-64">
+                            <Image
+                                src={currentVideo.bigImg}
+                                alt={currentVideo.title}
+                                fill
+                                className="object-contain rounded-xl opacity-80"
+                            />
+                        </div>
                         <audio
                             ref={(el) => { if (el) el.volume = volume; }}
                             src={resolvedUrl}
@@ -244,7 +249,8 @@ export function PlayerSection({
                     </div>
                 )}
 
-                {/* Global Volume Control */}
+                {/* Global Volume Control — only for listeners, not the creator */}
+                {currentUserId !== creatorId && (
                 <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
                     <div className="flex items-center gap-2 bg-black/60 px-3 py-2 rounded-xl border border-white/5 backdrop-blur-md group/vol transition-all hover:pr-4">
                         <Button
@@ -265,6 +271,7 @@ export function PlayerSection({
                         />
                     </div>
                 </div>
+                )}
 
                 {pathname.startsWith("/party/") && (
                     <div className="absolute inset-0 z-10 cursor-default" />

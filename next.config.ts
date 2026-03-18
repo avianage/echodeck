@@ -3,7 +3,10 @@ const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development'
+  disable: process.env.NODE_ENV === 'development',
+  fallbacks: {
+    document: '/offline',
+  },
 });
 
 const nextConfig: NextConfig = {
@@ -18,6 +21,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'i.ytimg.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'i.scdn.co',
         pathname: '/**',
       },
     ],
