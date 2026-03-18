@@ -2,19 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
+import { broadcastEvent } from "@/app/lib/broadcastEvent";
 
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
-
-    if (!session || !session.user?.email) {
-        return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
-    }
-
-    const userId = (session.user as any).id;
-
-    if (!userId) {
-        return NextResponse.json({ message: "User not found" }, { status: 403 });
-    }
+    const userId = (session?.user as any)?.id ?? null;
 
     try {
         const { streamId } = await req.json();
@@ -31,14 +25,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Stream not found" }, { status: 404 });
         }
 
-        // Only allow the person who added it OR the creator of the page to remove it
-        if (stream.addedById !== userId && stream.userId !== userId) {
+        const role = await getStreamRole(userId, stream.userId);
+        const canRemoveAny = hasPermission(role, "queue:remove:any");
+        const canRemoveOwn = hasPermission(role, "queue:remove:own") && stream.addedById === userId;
+
+        if (!canRemoveAny && !canRemoveOwn) {
             return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
         }
 
         await prismaClient.stream.delete({
             where: { id: streamId }
         });
+
+        if (role === "MODERATOR") {
+            await broadcastEvent(stream.userId, "SONG_REMOVED_BY_MOD", "A song was removed by a moderator");
+        }
 
 
         return NextResponse.json({ message: "Stream removed successfully" });

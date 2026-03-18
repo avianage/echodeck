@@ -2,20 +2,33 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/app/lib/auth";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
+import { broadcastEvent } from "@/app/lib/broadcastEvent";
 
 export async function GET() {
     const session = await getServerSession(authOptions);
+    const userId = (session?.user as any)?.id ?? null;
 
-    if (!session) {
-        console.warn("No session found");
-        return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+    const user = await prismaClient.user.findUnique({
+        where: { id: userId || "" },
+        select: { isBanned: true, bannedUntil: true }
+    });
+
+    if (user?.isBanned) {
+        return NextResponse.json({ message: "Account banned" }, { status: 403 });
     }
 
-    const userId = (session.user as any).id;
+    if (user?.bannedUntil && new Date(user.bannedUntil) > new Date()) {
+        return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
+    }
 
-    if (!userId) {
-        console.warn("User ID not found in session");
-        return NextResponse.json({ message: "User not found" }, { status: 403 });
+    // In 'next', the creatorId is effectively the userId (the streamer)
+    // but since we want to allow the OWNER to skip too, we treat it as a skip on the current user's stream
+    const role = await getStreamRole(userId, userId); 
+
+    if (!hasPermission(role, "playback:skip")) {
+        return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
     }
 
     const mostUpvotedStream = await prismaClient.stream.findFirst({
@@ -61,7 +74,8 @@ export async function GET() {
                 played: true,
                 playedTs: new Date()
             }
-        })
+        }),
+        broadcastEvent(userId, "SONG_SKIPPED_BY_CREATOR", `Skipped to: ${mostUpvotedStream.title}`)
     ]);
 
     return NextResponse.json({

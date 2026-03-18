@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
+import { isOwner } from "@/app/lib/getSessionRole";
 
 const HeartbeatSchema = z.object({
     creatorId: z.string(),
@@ -24,11 +25,26 @@ export async function POST(req: NextRequest) {
 
         const userId = (session.user as any).id;
 
+        const user = await prismaClient.user.findUnique({
+            where: { id: userId },
+            select: { id: true, isBanned: true, bannedUntil: true, platformRole: true }
+        });
+
+        if (user?.isBanned) {
+            const isPermanent = !user.bannedUntil;
+            const isActive = user.bannedUntil ? new Date(user.bannedUntil) > new Date() : false;
+            if (isPermanent || isActive) {
+                return NextResponse.json({ message: "Account is banned" }, { status: 403 });
+            }
+        }
+
+        if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 });
+
         const body = await req.json();
         const data = HeartbeatSchema.parse(body);
 
-        // If it's the creator, update the state
-        if (userId === data.creatorId && data.currentTime !== undefined) {
+        // If it's the creator (or OWNER), update the state
+        if ((userId === data.creatorId || (user as any)?.platformRole === "OWNER") && data.currentTime !== undefined) {
             const existing = await prismaClient.currentStream.findUnique({
                 where: { userId: data.creatorId }
             });
@@ -54,20 +70,70 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Heartbeat updated" });
         }
 
-        // If it's a listener (or anyone else), return the current state
-        const currentStream = await prismaClient.currentStream.findUnique({
-            where: { userId: data.creatorId },
-            include: { stream: true }
-        }) as any;
+        // --- LISTENER / VIEWER LOGIC ---
+        // 1. Fetch current state and previous activity
+        const [currentStream, listenerActivity] = await Promise.all([
+            prismaClient.currentStream.findUnique({
+                where: { userId: data.creatorId },
+                include: { stream: true }
+            }),
+            prismaClient.listeningActivity.findUnique({
+                where: { userId: user.id }
+            })
+        ]);
 
         if (!currentStream) {
             return NextResponse.json({ message: "No active stream" }, { status: 404 });
         }
 
-        // Calculate server-side offset so client clock skew doesn't matter
+        // 2. Fetch pending events since last heartbeat
+        const lastSeen = listenerActivity?.updatedAt ?? new Date(Date.now() - 30000); // 30s window fallback
+        const pendingEvents = await prismaClient.streamEvent.findMany({
+            where: {
+                creatorId: data.creatorId,
+                createdAt: { gt: lastSeen },
+                expiresAt: { gt: new Date() }
+            },
+            orderBy: { createdAt: "asc" }
+        });
+
+        // 3. Update activity and viewer count (if not OWNER)
+        if ((user.platformRole as any) !== "OWNER") {
+            const activeStream = currentStream?.stream;
+
+            await prismaClient.listeningActivity.upsert({
+                where: { userId: user.id },
+                update: { 
+                    creatorId: data.creatorId, 
+                    songTitle: activeStream?.title ?? null,
+                    songId: activeStream?.extractedId ?? null,
+                    updatedAt: new Date() 
+                },
+                create: { 
+                    userId: user.id, 
+                    creatorId: data.creatorId,
+                    songTitle: activeStream?.title ?? null,
+                    songId: activeStream?.extractedId ?? null
+                }
+            });
+
+            const activeCount = await prismaClient.listeningActivity.count({
+                where: {
+                    creatorId: data.creatorId,
+                    updatedAt: { gte: new Date(Date.now() - 10000) }
+                }
+            });
+
+            await prismaClient.currentStream.update({
+                where: { userId: data.creatorId },
+                data: { viewerCount: activeCount }
+            });
+        }
+
+        // 4. Return sync data and events
         const serverNow = Date.now();
-        const updatedAt = new Date(currentStream.updatedAt).getTime();
-        const serverStaleness = (serverNow - updatedAt) / 1000;
+        const updatedAtTs = new Date(currentStream.updatedAt).getTime();
+        const serverStaleness = (serverNow - updatedAtTs) / 1000;
         const serverComputedTime = currentStream.isPaused
             ? currentStream.currentTime
             : currentStream.currentTime + serverStaleness;
@@ -77,7 +143,10 @@ export async function POST(req: NextRequest) {
             computedTime: serverComputedTime,
             isPaused: currentStream.isPaused,
             updatedAt: currentStream.updatedAt,
-            stream: currentStream.stream
+            viewerCount: currentStream.viewerCount,
+            actualViewerCount: currentStream.viewerCount,
+            stream: currentStream.stream,
+            events: pendingEvents
         });
 
 

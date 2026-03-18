@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 const SyncSchema = z.object({
     creatorId: z.string(),
@@ -21,19 +23,13 @@ export async function POST(req: NextRequest) {
 
         const userId = (session.user as any).id;
 
-        if (!userId) {
-            console.error("Sync API: User ID not found for email:", session.user.email);
-            return NextResponse.json({ message: "User not found" }, { status: 403 });
-        }
-
         const body = await req.json();
         const data = SyncSchema.parse(body);
 
-        console.log(`📡 Sync Command: ${data.type} at ${data.currentTime}s for creator: ${data.creatorId} (by user: ${userId})`);
+        const role = await getStreamRole(userId, data.creatorId);
+        const permissionRequired = data.type === "play" ? "playback:play" : "playback:pause";
 
-        // Only the creator should be able to trigger sync
-        if (userId !== data.creatorId) {
-            console.warn(`Sync API: Unauthorized attempt. User ${userId} tried to sync for ${data.creatorId}`);
+        if (!hasPermission(role, permissionRequired)) {
             return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
         }
 

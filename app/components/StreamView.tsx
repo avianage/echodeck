@@ -4,22 +4,23 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Share2, Play, Star, Lock } from "lucide-react";
+import { Share2, Play, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2 } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
 import { PLAYLIST_REGEX, SPOTIFY_PLAYLIST_REGEX, YT_REGEX, SPOTIFY_TRACK_REGEX } from "@/app/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { Appbar } from "./Appbar";
+
 import ReactPlayer from "react-player";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useDebounce } from "@/app/lib/useDebounce";
 import { PlayerSection } from "./PlayerSection";
 import { SearchBar } from "./SearchBar";
 import { QueueSection } from "./QueueSection";
 import { ActivityLog } from "./ActivityLog";
 import { PlaylistModal } from "./PlaylistModal";
+import { StreamManagement } from "./StreamManagement";
 
 interface Video {
     id: string,
@@ -37,6 +38,12 @@ interface Video {
     playedTs: string | null
 }
 
+interface StreamEvent {
+    id: string;
+    type: "USER_BANNED_PLATFORM" | "USER_BANNED_STREAM" | "USER_TIMED_OUT_PLATFORM" | "USER_TIMED_OUT_STREAM" | "CREATOR_ROLE_REVOKED" | "STREAM_FORCE_CLOSED" | "MOD_PROMOTED" | "MOD_DEMOTED" | "SONG_REMOVED_BY_MOD" | "SONG_SKIPPED_BY_CREATOR";
+    message: string;
+}
+
 const REFRESH_INTERVAL_MS = 10 * 1000;
 
 export default function StreamView({
@@ -46,6 +53,7 @@ export default function StreamView({
     creatorId: string,
     playVideo: boolean
 }) {
+    const router = useRouter();
     const [videoLink, setVideoLink] = useState('');
     const [queue, setQueue] = useState<Video[]>([]);
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
@@ -65,13 +73,19 @@ export default function StreamView({
     const [activityLogs, setActivityLogs] = useState<{ type: "success" | "error", message: string, timestamp: number }[]>([]);
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [creator, setCreator] = useState<{ id: string, email: string, isPublic: boolean } | null>(null);
+    const [creator, setCreator] = useState<{ id: string, email: string, isPublic: boolean, partyCode?: string | null } | null>(null);
     const [accessStatus, setAccessStatus] = useState<string | null>(null);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [isFavorite, setIsFavorite] = useState(false);
     const [volume, setVolume] = useState(0.8);
     const [heartbeatFailCount, setHeartbeatFailCount] = useState(0);
     const [isResolving, setIsResolving] = useState(false);
+    const [streamIsPublic, setStreamIsPublic] = useState(false);
+    const [viewerCount, setViewerCount] = useState(0);
+    const [streamTitle, setStreamTitle] = useState("");
+    const [streamGenre, setStreamGenre] = useState("");
+    const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+    const [showSpotifyPrompt, setShowSpotifyPrompt] = useState(false);
     const lastRefreshRef = useRef<number>(0);
     const lastAccessPollRef = useRef<number>(0);
     const MAX_HEARTBEAT_FAILURES = 3;
@@ -138,9 +152,13 @@ export default function StreamView({
                 if (!json.activeStream?.stream) {
                     return null;
                 }
+                setStreamIsPublic(json.activeStream.stream.isPublic);
+                setViewerCount(json.activeStream.viewerCount);
                 if (video?.id === json.activeStream.stream.id) {
                     return video;
                 }
+                setStreamTitle(json.activeStream.stream.title || "");
+                setStreamGenre(json.activeStream.stream.genre || "");
                 return json.activeStream.stream
             });
 
@@ -221,6 +239,11 @@ export default function StreamView({
             });
             const data = await res.json();
             if (!res.ok) {
+                if (data.code === "SPOTIFY_NOT_CONNECTED") {
+                    setShowSpotifyPrompt(true);
+                    setLoading(false);
+                    return;
+                }
                 const errorMsg = data.message || "Failed to add video";
                 toast.error(errorMsg);
                 addLog("error", `Failed: ${videoLink} - ${errorMsg}`);
@@ -241,11 +264,25 @@ export default function StreamView({
 
     useEffect(() => {
         console.log("🔵 StreamView mounted");
+        const isCreator = !pathname.startsWith("/party/");
+
+        const handleUnload = () => {
+            if (isCreator) {
+                // Use fetch with keepalive for reliability on exit
+                fetch("/api/streams/metadata", { method: "DELETE", keepalive: true });
+            }
+        };
+
+        window.addEventListener("beforeunload", handleUnload);
 
         return () => {
             console.log("🔴 StreamView unmounted");
+            window.removeEventListener("beforeunload", handleUnload);
+            if (isCreator) {
+                fetch("/api/streams/metadata", { method: "DELETE" });
+            }
         };
-    }, []);
+    }, [pathname]);
 
 
     useEffect(() => {
@@ -324,6 +361,36 @@ export default function StreamView({
                         if (data.stream && currentVideo?.id !== data.stream.id) {
                             console.log("🎵 Song changed remotely, refreshing...");
                             refreshStreams();
+                        }
+
+                        // Update viewer count for everyone
+                        if (data.actualViewerCount !== undefined) {
+                            setViewerCount(data.actualViewerCount);
+                        }
+
+                        // Process events
+                        if (data.events && data.events.length > 0) {
+                            data.events.forEach((event: StreamEvent) => {
+                                switch (event.type) {
+                                    case "STREAM_FORCE_CLOSED":
+                                    case "CREATOR_ROLE_REVOKED":
+                                        toast.error(event.message, { autoClose: false, toastId: event.id });
+                                        setTimeout(() => router.push("/discover"), 3000);
+                                        break;
+                                    case "USER_BANNED_PLATFORM":
+                                    case "USER_TIMED_OUT_PLATFORM":
+                                    case "USER_BANNED_STREAM":
+                                    case "USER_TIMED_OUT_STREAM":
+                                        toast.warning(event.message, { autoClose: 5000, toastId: event.id });
+                                        break;
+                                    case "SONG_SKIPPED_BY_CREATOR":
+                                    case "SONG_REMOVED_BY_MOD":
+                                    case "MOD_PROMOTED":
+                                    case "MOD_DEMOTED":
+                                        toast.info(event.message, { autoClose: 3000, toastId: event.id });
+                                        break;
+                                }
+                            });
                         }
                     }
                 } else {
@@ -808,38 +875,72 @@ export default function StreamView({
     };
 
     const handleShare = () => {
-        const sharableLink = `${window.location.protocol}//${window.location.host}/party/${creatorId}`;
+        const sharableLink = `${window.location.protocol}//${window.location.host}/party/${creator?.partyCode || creatorId}`;
         navigator.clipboard.writeText(sharableLink).then(() => {
-            toast.success("Link Copied to Clipboard!", {
-                position: "top-right",
-                autoClose: 3000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true,
-                progress: undefined
-            });
-        },
-            (err) => {
-                console.error("Could not copy: ", err);
-                toast.error("Failed to copy link. Please Try Again", {
-                    position: "top-right",
-                    autoClose: 3000,
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                    draggable: true,
-                    progress: undefined
-                });
+            toast.success("Link Copied to Clipboard!");
+        });
+    };
+
+    const handleToggleStreamVisibility = async () => {
+        if (!currentVideo) {
+            toast.info("Start a stream to change visibility");
+            return;
+        }
+        const newState = !streamIsPublic;
+        setStreamIsPublic(newState);
+        try {
+            const [res1, res2] = await Promise.all([
+                fetch(`/api/streams/${currentVideo.id}/visibility`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ isPublic: newState })
+                }),
+                fetch("/api/user/privacy", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ isPublic: newState })
+                })
+            ]);
+            
+            if (res1.ok && res2.ok) {
+                toast.success(`Stream is now ${newState ? "Public" : "Private"}`);
+            } else {
+                throw new Error();
             }
-        );
+        } catch {
+            setStreamIsPublic(!newState);
+            toast.error("Failed to update visibility");
+        }
+    };
+
+    const handleSaveMetadata = async () => {
+        if (!currentVideo) return;
+        setIsSavingMetadata(true);
+        try {
+            const res = await fetch("/api/streams/metadata", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    streamId: currentVideo.id,
+                    title: streamTitle,
+                    genre: streamGenre
+                })
+            });
+            if (res.ok) {
+                toast.success("Stream settings updated!");
+                refreshStreams();
+            } else {
+                toast.error("Failed to update stream settings");
+            }
+        } catch (err) {
+            toast.error("Error saving settings");
+        } finally {
+            setIsSavingMetadata(false);
+        }
     };
 
     return (
         <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 pb-safe text-white overflow-x-hidden">
-            <div className="mb-8">
-                <Appbar />
-            </div>
 
             {!pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
                 <div className="flex-1 flex flex-col items-center justify-center py-20 bg-black/40 backdrop-blur-md rounded-xl border border-gray-800 my-8">
@@ -868,23 +969,39 @@ export default function StreamView({
                         <div className="lg:col-span-2 space-y-6">
                             <div className="flex justify-between items-center">
                                 <h2 className="text-3xl font-bold text-white">Now Playing</h2>
-                                <div className="flex gap-2">
-                                    {currentUserId !== creatorId && (
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5 shadow-lg">
+                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                                        <span className="text-xs font-black tracking-widest uppercase text-gray-300"> {viewerCount} Viewers </span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {currentUserId === creatorId && currentVideo && (
+                                            <Button
+                                                onClick={handleToggleStreamVisibility}
+                                                variant="outline"
+                                                className={`h-11 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-3 ${streamIsPublic ? "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20" : "bg-accent/10 text-accent border-accent/20 hover:bg-accent/20"}`}
+                                            >
+                                                {streamIsPublic ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                                {streamIsPublic ? "Public" : "Private"}
+                                            </Button>
+                                        )}
+                                        {currentUserId !== creatorId && (
+                                            <Button
+                                                onClick={handleToggleFavorite}
+                                                variant="outline"
+                                                className={`border-gray-800 font-bold px-4 py-2 rounded-xl transition-all shadow-lg active:scale-95 ${isFavorite ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30" : "bg-gray-900/50 text-gray-400 hover:text-white"}`}
+                                            >
+                                                <Star className={`w-4 h-4 mr-2 ${isFavorite ? "fill-yellow-500" : ""}`} /> 
+                                                {isFavorite ? "Favorited" : "Favorite"}
+                                            </Button>
+                                        )}
                                         <Button
-                                            onClick={handleToggleFavorite}
-                                            variant="outline"
-                                            className={`border-gray-800 font-bold px-4 py-2 rounded-xl transition-all shadow-lg active:scale-95 ${isFavorite ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30" : "bg-gray-900/50 text-gray-400 hover:text-white"}`}
+                                            onClick={handleShare}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
                                         >
-                                            <Star className={`w-4 h-4 mr-2 ${isFavorite ? "fill-yellow-500" : ""}`} /> 
-                                            {isFavorite ? "Favorited" : "Favorite"}
+                                            <Share2 className="w-4 h-4 mr-2" /> Share
                                         </Button>
-                                    )}
-                                    <Button
-                                        onClick={handleShare}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
-                                    >
-                                        <Share2 className="w-4 h-4 mr-2" /> Share
-                                    </Button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1025,6 +1142,35 @@ export default function StreamView({
                                     onSubmit={handleSubmit}
                                     onSelectResult={handleSelectSearchResult}
                                 />
+
+                                <AnimatePresence>
+                                    {showSpotifyPrompt && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 10 }}
+                                            className="p-4 bg-gray-900 border border-green-800 rounded-2xl flex items-center gap-4 mt-4"
+                                        >
+                                            <div className="flex-1">
+                                                <p className="text-sm font-semibold text-white">Connect Spotify to use Spotify links</p>
+                                                <p className="text-xs text-gray-400 mt-1">Required to resolve Spotify track metadata</p>
+                                            </div>
+
+                                            <a
+                                                href="/api/auth/spotify-connect"
+                                                className="bg-green-500 hover:bg-green-600 text-black font-bold px-4 py-2 rounded-xl text-sm transition-colors"
+                                            >
+                                                Connect
+                                            </a>
+                                            <button
+                                                onClick={() => setShowSpotifyPrompt(false)}
+                                                className="text-gray-500 hover:text-gray-300"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
                             <QueueSection
@@ -1034,6 +1180,56 @@ export default function StreamView({
                                 onVote={handleVote}
                                 onRemove={handleRemove}
                             />
+
+                            {/* CREATOR MANAGEMENT PANEL */}
+                            {currentUserId === creatorId && (
+                                <div className="space-y-8 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-right-8 duration-700">
+                                    <div className="space-y-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-accent/10 rounded-xl border border-accent/20">
+                                                <Settings className="w-5 h-5 text-accent" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-black tracking-tighter uppercase italic">Session Settings</h3>
+                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Branding & Metadata</p>
+                                            </div>
+                                        </div>
+
+                                        <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+                                            <CardContent className="p-6 space-y-4">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Stream Title</label>
+                                                    <Input 
+                                                        value={streamTitle}
+                                                        onChange={(e) => setStreamTitle(e.target.value)}
+                                                        placeholder="Enter a catchy title..."
+                                                        className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Genre (Optional)</label>
+                                                    <Input 
+                                                        value={streamGenre}
+                                                        onChange={(e) => setStreamGenre(e.target.value)}
+                                                        placeholder="e.g. Chill, Lofi, Gaming"
+                                                        className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
+                                                    />
+                                                </div>
+                                                <Button 
+                                                    onClick={handleSaveMetadata}
+                                                    disabled={isSavingMetadata || !currentVideo}
+                                                    className="w-full h-12 rounded-2xl bg-accent hover:bg-accent/90 text-white font-black uppercase tracking-widest gap-2 shadow-lg shadow-accent/20"
+                                                >
+                                                    {isSavingMetadata ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                    Update Settings
+                                                </Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+
+                                    <StreamManagement creatorId={creatorId} />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

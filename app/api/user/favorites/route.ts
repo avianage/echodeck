@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
             favorites: {
                 include: {
                     favorite: {
-                        select: { id: true, email: true }
+                        select: { id: true, email: true, username: true, partyCode: true }
                     }
                 }
             }
@@ -23,15 +23,18 @@ export async function GET(req: NextRequest) {
     });
 
     const favoritesWithStatus = await Promise.all((user?.favorites || []).map(async (f) => {
-        const activeStream = await prismaClient.stream.findFirst({
+        const activeStream = await prismaClient.currentStream.findUnique({
             where: {
-                userId: f.favoriteId,
-                active: true
+                userId: f.favoriteId
             }
         });
+
+        // Consider online if heartbeat was within the last 30 seconds
+        const isOnline = activeStream && (new Date().getTime() - new Date(activeStream.updatedAt).getTime() < 30000);
+
         return {
             ...f.favorite,
-            isOnline: !!activeStream
+            isOnline: !!isOnline
         };
     }));
 

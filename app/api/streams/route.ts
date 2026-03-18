@@ -11,12 +11,16 @@ import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
 import spotifyUrlInfo from "spotify-url-info";
 
 import { isRateLimited } from "@/app/lib/rateLimit";
+import { getStreamRole, isOwner } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
+import { getValidSpotifyToken } from "@/app/lib/spotifyToken";
 
 const { getTracks } = spotifyUrlInfo(fetch as any);
 
 const CreateStreamSchema = z.object({
     creatorId: z.string(),
-    url: z.string()
+    url: z.string(),
+    isPublic: z.boolean().optional()
 })
 
 const MAX_QUEUE_LENGTH = 200;
@@ -106,26 +110,33 @@ export async function POST(req: NextRequest) {
             }
 
             const session = await getServerSession(authOptions) as any;
+            const userId = session?.user?.id;
             console.log(`🎧 Fetching details for Spotify track: ${spotifyId}`);
+
+            const token = await getValidSpotifyToken(userId);
+            if (!token) {
+                return NextResponse.json({
+                    message: "Spotify account not connected",
+                    code: "SPOTIFY_NOT_CONNECTED"
+                }, { status: 400 });
+            }
 
             let track: any = null;
 
-            // 1. Try User Access Token if available
-            if (session?.accessToken && session?.provider?.toLowerCase() === "spotify") {
-                try {
-                    console.log("📡 Trying User Token for track fetch");
-                    const userApi = getUserSpotifyApi(session.accessToken);
-                    if (userApi) {
-                        const res = await userApi.getTrack(spotifyId);
-                        track = res.body;
-                        console.log("✅ Track fetched via User Token");
-                    }
-                } catch (err: any) {
-                    console.warn(`⚠️ User Token failed for track ${spotifyId}: ${err.message}`);
+            // 1. Try User Linked Token (from spotifyToken helper)
+            try {
+                console.log("📡 Trying Linked Spotify Token for track fetch");
+                const userApi = getUserSpotifyApi(token);
+                if (userApi) {
+                    const res = await userApi.getTrack(spotifyId);
+                    track = res.body;
+                    console.log("✅ Track fetched via Linked Token");
                 }
+            } catch (err: any) {
+                console.warn(`⚠️ Linked Token failed for track ${spotifyId}: ${err.message}`);
             }
 
-            // 2. Try App Client Credentials if No User Token or it failed
+            // 2. Try App Client Credentials if No Linked Token or it failed
             if (!track) {
                 try {
                     console.log("📡 Trying Client Credentials for track fetch");
@@ -189,18 +200,43 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        if (!session?.user?.email) {
+        if (!session) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
         }
 
         const user = await prismaClient.user.findUnique({
-            where: {
-                email: session.user.email,
-            },
+            where: { id: (session.user as any).id },
+            select: { id: true, isBanned: true, bannedUntil: true, platformRole: true }
         });
+
+        if (user?.isBanned) {
+            return NextResponse.json({ message: "Account banned" }, { status: 403 });
+        }
+
+        if (user?.bannedUntil && new Date(user.bannedUntil) > new Date()) {
+            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
+        }
 
         if (!user) {
             return NextResponse.json({ message: "User not found" }, { status: 403 });
+        }
+
+        const role = await getStreamRole(user.id, data.creatorId);
+
+        // If user is trying to add to a queue
+        if (!hasPermission(role, "queue:add")) {
+            return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+        }
+
+        // Special check: Only CREATORs (or OWNER) can create streams (own channels)
+        // This is handled by verifying if they are the creatorId and have the platformRole
+        if (user.id === data.creatorId) {
+            const canCreate = (user.platformRole as any) === "OWNER" || user.platformRole === "CREATOR";
+            if (!canCreate) {
+                return NextResponse.json({ 
+                    message: "Creator access required. Contact the platform owner." 
+                }, { status: 403 });
+            }
         }
 
         const creator = await prismaClient.user.findUnique({
@@ -250,7 +286,8 @@ export async function POST(req: NextRequest) {
                 type: streamType,
                 title,
                 smallImg,
-                bigImg
+                bigImg,
+                isPublic: data.isPublic ?? false
             }
         });
 
@@ -306,7 +343,7 @@ export async function GET(req: NextRequest) {
 
         const creator = await prismaClient.user.findUnique({
             where: { id: creatorId },
-            select: { id: true, email: true, isPublic: true }
+            select: { id: true, email: true, isPublic: true, partyCode: true }
         });
 
         if (!creator) {

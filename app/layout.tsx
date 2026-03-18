@@ -4,15 +4,20 @@ import "./globals.css";
 import { Providers } from "./provider";
 import React from "react";
 import { WindowsTitleBar } from "./components/WindowsTitleBar";
+import { Appbar } from "./components/Appbar";
+import { BottomNav } from "./components/BottomNav";
+import { MainLayout } from "./components/MainLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: 'swap',
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -31,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#030712",
+  themeColor: "#2563eb",
   viewportFit: "cover",
 };
 
@@ -47,7 +52,13 @@ export default function RootLayout({
       >
         <Providers>
           <WindowsTitleBar />
-          {children}
+          <div className="fixed top-0 left-0 right-0 z-50">
+            <Appbar />
+          </div>
+          <MainLayout>
+            {children}
+          </MainLayout>
+          <BottomNav />
         </Providers>
       </body>
     </html>

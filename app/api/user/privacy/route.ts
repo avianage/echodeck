@@ -10,10 +10,13 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { isPublic } = await req.json();
+        const { allowFriendRequests } = await req.json();
+        const updateData: any = {};
+        if (allowFriendRequests !== undefined) updateData.allowFriendRequests = allowFriendRequests;
+
         await prismaClient.user.update({
             where: { email: session.user.email },
-            data: { isPublic }
+            data: updateData
         });
         return NextResponse.json({ message: "Privacy updated" });
     } catch (err) {
@@ -29,8 +32,8 @@ export async function GET(req: NextRequest) {
 
     const user = await prismaClient.user.findUnique({
         where: { email: session.user.email },
-        select: { isPublic: true }
+        select: { allowFriendRequests: true }
     });
 
-    return NextResponse.json({ isPublic: user?.isPublic });
+    return NextResponse.json({ allowFriendRequests: user?.allowFriendRequests });
 }

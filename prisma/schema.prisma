@@ -16,7 +16,10 @@ datasource db {
 
 model User {
   id                    String    @id @default(cuid())
+  partyCode             String?   @unique @default(uuid())
+  name                  String?
   email                 String?   @unique
+  emailVerified         DateTime?
   username              String?   @unique
   displayName           String?
   image                 String?
@@ -27,6 +30,9 @@ model User {
 
   // Platform-level RBAC
   platformRole          PlatformRole @default(MEMBER)
+
+  // Stream & Social Privacy
+  allowFriendRequests   Boolean   @default(true)
 
   // Platform ban/timeout
   isBanned              Boolean   @default(false)
@@ -64,6 +70,7 @@ model User {
 }
 
 enum PlatformRole {
+  OWNER
   MEMBER
   CREATOR
 }
@@ -141,6 +148,8 @@ model CurrentStream {
   userId      String   @id
   streamId    String?  @unique
   stream      Stream?  @relation(fields: [streamId], references: [id])
+  title       String?  // Custom session title
+  genre       String?  // Custom session genre
   currentTime Float    @default(0)
   isPaused    Boolean  @default(false)
   updatedAt   DateTime @updatedAt
@@ -261,4 +270,28 @@ enum AccessStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// ─── Events ───────────────────────────────────────────────────────────────────
+
+model StreamEvent {
+    id        String          @id @default(cuid())
+    creatorId String
+    type      StreamEventType
+    message   String
+    createdAt DateTime        @default(now())
+    expiresAt DateTime        // events expire after 30s
+}
+
+enum StreamEventType {
+    USER_BANNED_PLATFORM
+    USER_BANNED_STREAM
+    USER_TIMED_OUT_PLATFORM
+    USER_TIMED_OUT_STREAM
+    CREATOR_ROLE_REVOKED
+    STREAM_FORCE_CLOSED
+    MOD_PROMOTED
+    MOD_DEMOTED
+    SONG_REMOVED_BY_MOD
+    SONG_SKIPPED_BY_CREATOR
 }

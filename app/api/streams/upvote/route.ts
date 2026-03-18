@@ -20,7 +20,16 @@ export async function POST(req: NextRequest) {
             where: {
                 email: session.user.email,
             },
+            select: { id: true, isBanned: true, bannedUntil: true }
         });
+
+        if (user?.isBanned) {
+            return NextResponse.json({ message: "Account banned" }, { status: 403 });
+        }
+
+        if (user?.bannedUntil && new Date(user.bannedUntil) > new Date()) {
+            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
+        }
 
         if (!user) {
             return NextResponse.json({ message: "User not found" }, { status: 403 });
