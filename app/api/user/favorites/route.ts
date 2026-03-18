@@ -15,14 +15,14 @@ export async function GET(req: NextRequest) {
             favorites: {
                 include: {
                     favorite: {
-                        select: { id: true, email: true, username: true, partyCode: true }
+                        select: { id: true, email: true, username: true, partyCode: true, image: true } as any
                     }
                 }
             }
         }
     });
 
-    const favoritesWithStatus = await Promise.all((user?.favorites || []).map(async (f) => {
+    const favoritesWithStatus = await Promise.all(((user as any)?.favorites || []).map(async (f: any) => {
         const activeStream = await prismaClient.currentStream.findUnique({
             where: {
                 userId: f.favoriteId

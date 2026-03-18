@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, Users, Play, Radio } from "lucide-react";
+import { Lock, Users, Play, Radio, User } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
@@ -55,12 +55,18 @@ export function StreamCard({ stream, isGuest, onJoinClick }: StreamCardProps) {
             <div className="p-6 space-y-4">
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex gap-4">
-                        <div className="relative">
-                            <img 
-                                src={stream.user?.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${stream.user?.username}`} 
-                                className="w-12 h-12 rounded-2xl border-2 border-white/5 object-cover"
-                                alt={stream.user?.username}
-                            />
+                        <div className="relative shrink-0">
+                            <div className="w-12 h-12 rounded-2xl border-2 border-white/5 bg-gray-900 flex items-center justify-center overflow-hidden">
+                                {stream.user?.image ? (
+                                    <img 
+                                        src={stream.user.image} 
+                                        className="w-full h-full object-cover"
+                                        alt={stream.user.username}
+                                    />
+                                ) : (
+                                    <User className="w-6 h-6 text-gray-500" />
+                                )}
+                            </div>
                             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-4 border-[#111] rounded-full" />
                         </div>
                         <div className="space-y-1">

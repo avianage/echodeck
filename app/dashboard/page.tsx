@@ -17,7 +17,7 @@ export default function Dashboard() {
     const router = useRouter();
     const [view, setView] = useState<"choice" | "join">("choice");
     const [joinInput, setJoinInput] = useState("");
-    const [favorites, setFavorites] = useState<{id: string, email: string, username: string, partyCode: string | null, isOnline: boolean}[]>([]);
+    const [favorites, setFavorites] = useState<{id: string, email: string, username: string, partyCode: string | null, image: string | null, isOnline: boolean}[]>([]);
     const [isLoadingFavorites, setIsLoadingFavorites] = useState(true);
 
     // Stream setup modal
@@ -241,8 +241,12 @@ export default function Dashboard() {
                                             >
                                                 <div className="flex items-center gap-4 relative z-10 w-full">
                                                     <div className="relative shrink-0">
-                                                        <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br transition-all duration-500 ${fav.isOnline ? "from-green-500/20 to-blue-500/20 border-green-500/20" : "from-gray-500/10 to-gray-500/5 border-white/5"} flex items-center justify-center font-bold border`}>
-                                                            <span className={fav.isOnline ? "text-green-500" : "text-gray-600"}>{fav.email[0].toUpperCase()}</span>
+                                                        <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br transition-all duration-500 overflow-hidden ${fav.isOnline ? "from-green-500/20 to-blue-500/20 border-green-500/20" : "from-gray-500/10 to-gray-500/5 border-white/5"} flex items-center justify-center font-bold border`}>
+                                                            {fav.image ? (
+                                                                <img src={fav.image} alt={fav.email} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <span className={fav.isOnline ? "text-green-500" : "text-gray-600"}>{fav.email[0].toUpperCase()}</span>
+                                                            )}
                                                         </div>
                                                         {fav.isOnline && (
                                                             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-950 shadow-[0_0_10px_rgba(34,197,94,0.4)]" />

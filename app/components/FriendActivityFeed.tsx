@@ -67,7 +67,7 @@ export function FriendActivityFeed() {
                                         {friend.image ? (
                                             <img src={friend.image} className="w-full h-full object-cover" />
                                         ) : (
-                                            <span>{friend.username[0].toUpperCase()}</span>
+                                            <User className="w-5 h-5 text-green-500" />
                                         )}
                                     </div>
                                     <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-gray-900 shadow-[0_0_10px_rgba(34,197,94,0.4)] animate-pulse" />

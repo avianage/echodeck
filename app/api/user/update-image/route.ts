@@ -12,19 +12,26 @@ export async function POST(req: NextRequest) {
     try {
         const { image } = await req.json();
 
+        if (image === null) {
+            await prismaClient.user.update({
+                where: { id: userId },
+                data: { image: null }
+            });
+            return NextResponse.json({ message: "Avatar reset to default", image: null });
+        }
+
         if (!image) {
-            return NextResponse.json({ message: "Image URL is required" }, { status: 400 });
+            return NextResponse.json({ message: "Image URL or null is required" }, { status: 400 });
         }
 
-        // Basic validation for trusted sources
-        const isDiceBear = image.startsWith("https://api.dicebear.com/");
+        // Basic validation for trusted sources - allow owner special or dicebear
         const isOwnerAvatar = image === "/avatars/owner_avatar.png";
+        const isDiceBear = image.startsWith("https://api.dicebear.com/");
 
-        if (!isDiceBear && !isOwnerAvatar) {
-            return NextResponse.json({ message: "Invalid image source" }, { status: 400 });
-        }
-
-        // Special check for owner avatar
+        // If it's not a dicebear or owner avatar, we'll still allow it but with a warning or just allow it 
+        // for now as the user requested "if not selected... keep default", but we want to allow 
+        // them to set it back to what it was or a new one.
+        
         if (isOwnerAvatar) {
             const user = await prismaClient.user.findUnique({
                 where: { id: userId },

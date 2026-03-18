@@ -265,10 +265,12 @@ export default function AccountPage() {
         }
     };
 
-    const handleUpdateAvatar = async (seed: string) => {
-        const imageUrl = seed === "OWNER_SPECIAL" 
-            ? "/avatars/owner_avatar.png" 
-            : `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+    const handleUpdateAvatar = async (seed: string | null) => {
+        const imageUrl = seed === null 
+            ? null 
+            : seed === "OWNER_SPECIAL" 
+                ? "/avatars/owner_avatar.png" 
+                : `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
         try {
             const res = await fetch("/api/user/update-image", {
                 method: "POST",
@@ -457,7 +459,17 @@ export default function AccountPage() {
                                     <div className="flex items-center justify-between">
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Select Your Avatar</p>
-                                            <p className="text-xs text-gray-500 font-medium leading-relaxed">Choose a persona that matches your vibe.</p>
+                                            <div className="flex items-center gap-4 mt-1">
+                                                <p className="text-xs text-gray-500 font-medium leading-relaxed">Choose a persona that matches your vibe.</p>
+                                                {user.image && (
+                                                    <button 
+                                                        onClick={() => handleUpdateAvatar(null as any)}
+                                                        className="text-[9px] font-black text-primary hover:text-primary/80 uppercase tracking-widest transition-colors flex items-center gap-1"
+                                                    >
+                                                        <X className="w-2.5 h-2.5" /> Reset to Default
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         {isCreator && (
                                             <div className="flex flex-col items-end gap-1">
