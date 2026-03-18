@@ -5,10 +5,11 @@ WORKDIR /app
 # Install build dependencies for yt-dlp-exec and other native modules
 RUN apk add --no-cache python3 build-base g++
 
-# Install dependencies
+# Install dependencies with increased memory limit
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm install
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN npm ci
 
 # After npm install, verify yt-dlp binary exists and is executable
 RUN test -f ./node_modules/yt-dlp-exec/bin/yt-dlp || \
@@ -21,7 +22,7 @@ COPY . .
 # Generate Prisma Client
 RUN npx prisma generate
 
-# Build the app
+# Build the app with increased memory limit
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

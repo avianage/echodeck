@@ -105,13 +105,13 @@ export function GuestJoinModal({ isOpen, streamTitle, creatorUsername, callbackU
                     ) : (
                         <div className="p-6 rounded-3xl bg-blue-500/5 border border-blue-500/10 text-center space-y-2 animate-in slide-in-from-bottom-2">
                             <p className="text-blue-500 font-bold text-sm"> Check your inbox! </p>
-                            <p className="text-gray-500 text-xs font-medium"> We've sent a magic link to {email}. </p>
+                            <p className="text-gray-500 text-xs font-medium"> We&apos;ve sent a magic link to {email}. </p>
                         </div>
                     )}
 
                     <div className="text-center">
                         <button onClick={onClose} className="text-gray-600 hover:text-gray-400 text-xs font-black uppercase tracking-widest transition-colors">
-                            I'll join later
+                            I&apos;ll join later
                         </button>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { User, Mail, Shield, Calendar, Music, ExternalLink, Unlink, Edit3, Check, X, Loader2, Users,
     Trash2,
@@ -313,13 +314,13 @@ export default function AccountPage() {
                             <p className="text-gray-400 mt-2">Manage your profile and account settings.</p>
                         </div>
                         {user.username && (
-                            <a 
+                            <Link 
                                 href={`/user/${user.username}`}
                                 className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 hover:border-primary/50 transition-all flex items-center gap-2 group w-fit"
                             >
                                 View My Public Profile
                                 <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform text-primary" />
-                            </a>
+                            </Link>
                         )}
                     </header>
 
@@ -562,6 +563,7 @@ export default function AccountPage() {
                                                     <Unlink className="w-4 h-4" />
                                                 </button>
                                             ) : (
+                                                /* eslint-disable-next-line @next/next/no-html-link-for-pages */
                                                 <a
                                                     href="/api/auth/spotify-connect"
                                                     className="text-xs font-bold text-green-500 hover:text-green-400 transition-colors"

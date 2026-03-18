@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
         if (daysSince < 30) {
             const daysLeft = Math.ceil(30 - daysSince);
             return NextResponse.json({
-                message: \`Username can be updated in \${daysLeft} more day(s)\`
+                message: `Username can be updated in ${daysLeft} more day(s)`
             }, { status: 429 });
         }
     }
