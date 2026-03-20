@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
             platformRole: true,
             allowFriendRequests: true,
             partyCode: true,
+            isBanned: true,
+            bannedUntil: true,
+            banReason: true,
             accounts: {
                 select: {
                     provider: true

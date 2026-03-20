@@ -46,6 +46,8 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+import { RestrictionGuardian } from "./components/RestrictionGuardian";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -57,15 +59,17 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <WindowsTitleBar />
-          <div className="fixed top-0 left-0 right-0 z-50">
-            <Appbar />
-          </div>
-          <MainLayout>
-            {children}
-          </MainLayout>
-          <BottomNav />
-          <ToastContainer position="top-right" autoClose={3000} theme="dark" />
+          <RestrictionGuardian>
+            <WindowsTitleBar />
+            <div className="fixed top-0 left-0 right-0 z-50">
+              <Appbar />
+            </div>
+            <MainLayout>
+              {children}
+            </MainLayout>
+            <BottomNav />
+            <ToastContainer position="top-right" autoClose={3000} theme="dark" />
+          </RestrictionGuardian>
         </Providers>
       </body>
     </html>

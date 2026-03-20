@@ -124,6 +124,7 @@ export default function AdminDashboard() {
             const data = await res.json();
             if (res.ok) {
                 toast.success(data.message);
+                setIsBanModalOpen(false);
                 fetchData();
             } else {
                 toast.error(data.message);

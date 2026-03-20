@@ -104,11 +104,19 @@ export const authOptions: NextAuthOptions = {
             (session as any).provider = token.provider;
 
             if (session.user) {
-                (session.user as any).id = token.id;
+                const userId = token.id as string;
+                // Important: Fetch fresh ban status from DB on every session check
+                // This ensures real-time enforcement for active JWT sessions
+                const dbUser = await prismaClient.user.findUnique({
+                    where: { id: userId },
+                    select: { isBanned: true, bannedUntil: true }
+                });
+
+                (session.user as any).id = userId;
                 (session.user as any).username = token.username;
                 (session.user as any).platformRole = token.platformRole;
-                (session.user as any).isBanned = token.isBanned;
-                (session.user as any).bannedUntil = token.bannedUntil;
+                (session.user as any).isBanned = dbUser?.isBanned ?? token.isBanned;
+                (session.user as any).bannedUntil = dbUser?.bannedUntil ?? token.bannedUntil;
                 (session.user as any).image = token.picture;
             }
             return session;
