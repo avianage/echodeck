@@ -52,10 +52,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chown=nextjs:nodejs /app/docker-bootstrap.sh ./docker-bootstrap.sh
 
-# Copy Prisma CLI so prisma generate works at container startup
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-
 # Explicitly copy generated Prisma client and WASM binaries
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
@@ -63,7 +59,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./nod
 # Ensure yt-dlp binary is copied and executable in the runner stage
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/yt-dlp-exec/bin/yt-dlp ./node_modules/yt-dlp-exec/bin/yt-dlp
 
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+# Install full Prisma CLI with all its dependencies for runtime migrations
+# Must run as root before switching to nextjs user
+USER root
+RUN npm install --prefix /app prisma --no-save --ignore-scripts \
+    && chown -R nextjs:nodejs /app/node_modules/prisma \
+    && chown -R nextjs:nodejs /app/node_modules/.bin/prisma \
+    && chown -R nextjs:nodejs /app/node_modules/@prisma \
+    && chown -R nextjs:nodejs /app/node_modules/.cache 2>/dev/null || true
+USER nextjs
 
 # Ensure the script is executable
 USER root
