@@ -33,7 +33,7 @@ export default async function proxy(req: NextRequest) {
 
     if (!isExempt) {
         try {
-            const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
+            const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
 
             const maintenanceRes = await fetch(
                 `${baseUrl}/api/admin/maintenance`,
