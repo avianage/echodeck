@@ -25,7 +25,13 @@ export async function POST(req: NextRequest) {
     const { username } = await req.json();
 
     const valid = /^[a-z0-9_]{5,}$/.test(username);
-    if (!valid) return NextResponse.json({ message: "Invalid username format" }, { status: 400 });
+    if (!valid) {
+        return NextResponse.json({ 
+            message: username.length < 5 
+                ? "Must be at least 5 characters" 
+                : "Only lowercase letters, numbers, and underscores allowed" 
+        }, { status: 400 });
+    }
 
     const existing = await prismaClient.user.findUnique({ where: { username } });
     if (existing && existing.id !== userId) {

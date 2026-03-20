@@ -46,7 +46,6 @@ export default function AccountPage() {
     useEffect(() => {
         const checkUsername = async () => {
             if (!isEditingUsername || !debouncedUsername || debouncedUsername === userData?.username) return;
-            if (debouncedUsername.length < 5) return;
 
             try {
                 const res = await fetch(`/api/user/check-username?username=${debouncedUsername}`);
