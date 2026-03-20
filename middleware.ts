@@ -2,6 +2,8 @@ import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 
+export const runtime = 'nodejs';
+
 const MAINTENANCE_EXEMPT_PATHS = [
     "/maintenance",
     "/api/admin/maintenance", // so the maintenance page can poll
