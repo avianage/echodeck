@@ -174,18 +174,23 @@ export const authOptions: NextAuthOptions = {
             return true;
         },
         async redirect({ url, baseUrl }) {
-            const publicBase = process.env.NEXTAUTH_URL ?? baseUrl;
+            // Priority 1: Use NEXTAUTH_URL from environment if set
+            // Priority 2: Use baseUrl (this might be internal in Docker)
+            // Priority 3: Hardcoded fallback as a last resort for this specific domain
+            const publicBase = process.env.NEXTAUTH_URL || (baseUrl.includes('96bd5d0481cd') || baseUrl.includes('localhost') ? 'https://echodeck.avianage.in' : baseUrl);
 
             // Strip internal Docker container URLs from callbackUrl param
             const sanitizeUrl = (u: string) => {
                 try {
-                    const parsed = new URL(u);
+                    const parsed = new URL(u.startsWith('http') ? u : `${publicBase}${u}`);
                     // If it's an internal container hostname (no dots, has port, or matches docker hash pattern)
                     const isInternal =
                         parsed.port === '3002' ||
                         !parsed.hostname.includes('.') ||
-                        /^[a-f0-9]+$/.test(parsed.hostname);
-                    if (isInternal) return publicBase;
+                        /^[a-f0-9]{12}$/.test(parsed.hostname) || // Docker container ID pattern
+                        parsed.hostname === 'localhost';
+                    
+                    if (isInternal) return publicBase + (parsed.pathname !== '/' ? parsed.pathname : '');
                 } catch {
                     // relative URL — safe
                 }
@@ -199,7 +204,7 @@ export const authOptions: NextAuthOptions = {
                 if (callbackUrl) {
                     const sanitized = sanitizeUrl(decodeURIComponent(callbackUrl));
                     urlObj.searchParams.set('callbackUrl', sanitized);
-                    // Also fix the base of the URL itself
+                    // Also fix the base of the URL itself if it's internal
                     const fixedBase = new URL(urlObj.pathname + urlObj.search, publicBase);
                     return fixedBase.toString();
                 }

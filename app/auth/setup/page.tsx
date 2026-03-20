@@ -20,6 +20,15 @@ function SetupContent() {
 
     const allowOwnerCreation = process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true";
 
+    const safeJson = async (res: Response) => {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            return await res.json();
+        }
+        // If not JSON, it might be a redirect or an error page (HTML)
+        throw new Error(`Unexpected response format: ${contentType || 'unknown'}. The request may have been redirected.`);
+    };
+
     // Debounced username check
     useEffect(() => {
         if (!username) {
@@ -39,11 +48,12 @@ function SetupContent() {
         const timer = setTimeout(async () => {
             try {
                 const res = await fetch(`/api/user/check-username?username=${username}`);
-                const data = await res.json();
+                const data = await safeJson(res);
                 setIsAvailable(data.available);
                 setReason(data.reason || "");
             } catch (err) {
-                console.error("Failed to check username", err);
+                console.error("Failed to check username:", err);
+                setReason("Failed to verify username availability");
             } finally {
                 setIsChecking(false);
             }
@@ -69,6 +79,7 @@ function SetupContent() {
         if (isAvailable !== true) return;
 
         setIsSubmitting(true);
+        setReason("");
         try {
             const res = await fetch("/api/user/setup", {
                 method: "POST",
@@ -77,16 +88,22 @@ function SetupContent() {
             });
 
             if (res.ok) {
+                const data = await safeJson(res);
                 await update({ username, displayName });
                 router.push(callbackUrl);
             } else {
-                const data = await res.json();
-                setIsAvailable(false);
-                setReason(data.message || "Failed to set up profile");
+                try {
+                    const data = await safeJson(res);
+                    setIsAvailable(false);
+                    setReason(data.message || "Failed to set up profile");
+                } catch (parseErr) {
+                    console.error("Parse error during failure handling:", parseErr);
+                    setReason(`Server error (Status ${res.status}). Please refresh and try again.`);
+                }
             }
         } catch (err) {
-            console.error("Setup error:", err);
-            setReason("An unexpected error occurred");
+            console.error("Setup error details:", err);
+            setReason(err instanceof Error ? err.message : "An unexpected error occurred. Please check your connection.");
         } finally {
             setIsSubmitting(false);
         }
