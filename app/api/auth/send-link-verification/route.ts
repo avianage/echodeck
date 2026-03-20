@@ -4,9 +4,8 @@ import { prismaClient } from "@/app/lib/db";
 import { Resend } from "resend";
 import crypto from "crypto";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(req: NextRequest) {
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { email, provider } = await req.json();
     const normalizedEmail = email.toLowerCase();
     const token = crypto.randomBytes(32).toString("hex");
