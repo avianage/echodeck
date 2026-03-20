@@ -63,6 +63,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./nod
 # Ensure yt-dlp binary is copied and executable in the runner stage
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/yt-dlp-exec/bin/yt-dlp ./node_modules/yt-dlp-exec/bin/yt-dlp
 
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+
 # Ensure the script is executable
 USER root
 RUN chmod +x ./docker-bootstrap.sh ./node_modules/yt-dlp-exec/bin/yt-dlp
