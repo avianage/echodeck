@@ -52,6 +52,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chown=nextjs:nodejs /app/docker-bootstrap.sh ./docker-bootstrap.sh
 
+# Copy Prisma CLI so prisma generate works at container startup
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+
 # Explicitly copy generated Prisma client and WASM binaries
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
@@ -64,9 +68,8 @@ USER root
 RUN chmod +x ./docker-bootstrap.sh ./node_modules/yt-dlp-exec/bin/yt-dlp
 USER nextjs
 
-EXPOSE 3000
-
-ENV PORT=3000
+ENV PORT=3002
+EXPOSE 3002
 
 # Use the bootstrap script to run migrations before starting the app
 CMD ["./docker-bootstrap.sh"]
