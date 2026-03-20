@@ -9,7 +9,8 @@ RUN apk add --no-cache python3 build-base g++
 COPY package*.json ./
 COPY prisma ./prisma/
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Generate Prisma client at build time — must happen while node_modules are writable
 RUN npx prisma generate
