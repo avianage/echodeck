@@ -33,8 +33,12 @@ export default async function proxy(req: NextRequest) {
 
     if (!isExempt) {
         try {
+            const baseUrl = process.env.NODE_ENV === "development" 
+                ? `http://localhost:${req.nextUrl.port || process.env.PORT || 3000}` 
+                : req.nextUrl.origin;
+
             const maintenanceRes = await fetch(
-                `${req.nextUrl.origin}/api/admin/maintenance`,
+                `${baseUrl}/api/admin/maintenance`,
                 { cache: "no-store", headers: { "Cache-Control": "no-cache, no-store, must-revalidate", Pragma: "no-cache" } }
             );
             

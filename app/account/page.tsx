@@ -46,6 +46,10 @@ export default function AccountPage() {
                 const res = await fetch("/api/user/me");
                 if (res.ok) {
                     const data = await res.json();
+                    if (!data.user) {
+                        await signOut({ callbackUrl: "/" });
+                        return;
+                    }
                     setUserData(data.user);
                     setNewUsername(data.user.username || "");
                     setNewDisplayName(data.user.displayName || (session?.user?.name ?? "") || "");
@@ -55,6 +59,8 @@ export default function AccountPage() {
                     if (privData.allowFriendRequests !== undefined) setAllowFriendRequests(privData.allowFriendRequests);
                     if (privData.isPublic !== undefined) setIsPublic(privData.isPublic);
                     setPartyCode(data.user.partyCode);
+                } else if (res.status === 404 || res.status === 401) {
+                    await signOut({ callbackUrl: "/" });
                 }
             } catch (err) {
                 console.error("Failed to fetch user data:", err);
