@@ -11,16 +11,16 @@ COPY prisma ./prisma/
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm ci
 
+# Generate Prisma client at build time — must happen while node_modules are writable
+RUN npx prisma generate
+
+# Copy source code and build the app
+COPY . .
+
 # After npm install, verify yt-dlp binary exists and is executable
 RUN test -f ./node_modules/yt-dlp-exec/bin/yt-dlp || \
     (echo "❌ yt-dlp binary missing after install" && exit 1)
 RUN chmod +x ./node_modules/yt-dlp-exec/bin/yt-dlp
-
-# Copy source code
-COPY . .
-
-# Generate Prisma Client
-RUN npx prisma generate
 
 # Build the app with increased memory limit
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -51,6 +51,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chown=nextjs:nodejs /app/docker-bootstrap.sh ./docker-bootstrap.sh
+
+# Explicitly copy generated Prisma client and WASM binaries
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
 # Ensure yt-dlp binary is copied and executable in the runner stage
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/yt-dlp-exec/bin/yt-dlp ./node_modules/yt-dlp-exec/bin/yt-dlp
