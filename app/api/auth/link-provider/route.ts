@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import crypto from "crypto";
@@ -45,3 +46,4 @@ export async function GET(req: NextRequest) {
         new URL(`${process.env.NEXTAUTH_URL}/auth/confirm-link?provider=${provider}&email=${encodeURIComponent(normalizedEmail)}`, req.url)
     );
 }
+

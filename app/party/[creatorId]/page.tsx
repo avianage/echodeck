@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import StreamView from "@/app/components/StreamView";
 import { prismaClient } from "@/app/lib/db";
 import { notFound, redirect } from "next/navigation";

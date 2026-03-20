@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -82,3 +83,4 @@ export async function GET() {
         stream: mostUpvotedStream
     });
 }
+

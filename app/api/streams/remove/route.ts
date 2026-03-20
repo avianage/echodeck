@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
@@ -47,3 +48,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Error removing stream" }, { status: 500 });
     }
 }
+

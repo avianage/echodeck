@@ -1,20 +1,32 @@
 import { PrismaClient } from "@prisma/client"
-import { Pool } from "pg"
-// Force reload of Prisma Client
 import { PrismaPg } from "@prisma/adapter-pg"
-
-const prismaClientSingleton = () => {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-    const adapter = new PrismaPg(pool)
-    return new PrismaClient({ adapter })
-}
+import { Pool } from "pg"
 
 declare global {
-    var prisma: undefined | ReturnType<typeof prismaClientSingleton> // eslint-disable-line no-var
+    var prisma: PrismaClient | undefined;
 }
 
-const prismaClient = globalThis.prisma ?? prismaClientSingleton()
+const getPrismaClient = () => {
+    if (globalThis.prisma) return globalThis.prisma;
+    
+    // Check if env var is missing during build
+    if (!process.env.DATABASE_URL) {
+        if (process.env.NODE_ENV === "production") {
+            console.warn("⚠️ DATABASE_URL is missing. Prisma Client will not be initialized.");
+        }
+    }
+    
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const adapter = new PrismaPg(pool)
+    const client = new PrismaClient({ adapter })
+    
+    if (process.env.NODE_ENV !== "production") globalThis.prisma = client;
+    return client;
+}
 
-export { prismaClient }
-
-if (process.env.NODE_ENV !== "production") globalThis.prisma = prismaClient
+export const prismaClient = globalThis.prisma || (process.env.DATABASE_URL ? getPrismaClient() : new Proxy({}, {
+    get: (_, prop) => {
+        if (prop === "then") return undefined; 
+        return () => { throw new Error(`PrismaClient accessed at build time or without DATABASE_URL. Property: ${String(prop)}`); }
+    }
+}) as unknown as PrismaClient);

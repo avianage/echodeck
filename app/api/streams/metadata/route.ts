@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
@@ -107,4 +108,5 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ message: "Internal server error" }, { status: 500 });
     }
 }
+
 

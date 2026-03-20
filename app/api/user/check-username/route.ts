@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 
@@ -21,3 +22,4 @@ export async function GET(req: NextRequest) {
         reason: existing ? "Username already taken" : null
     });
 }
+

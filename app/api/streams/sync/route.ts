@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -54,3 +55,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Sync failed: " + (e instanceof Error ? e.message : String(e)) }, { status: 500 });
     }
 }
+

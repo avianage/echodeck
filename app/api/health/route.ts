@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { execSync } from "child_process";
@@ -31,3 +32,4 @@ export async function GET() {
         { status: allOk ? 200 : 503 }
     );
 }
+

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { getServerSession } from "next-auth";
 import { prismaClient } from "@/app/lib/db";
 import { NextResponse } from "next/server";
@@ -25,3 +26,4 @@ export async function POST() {
 
   return new Response("Queue stopped and cleared", { status: 200 });
 }
+

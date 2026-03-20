@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { prismaClient } from "@/app/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
@@ -36,3 +37,4 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ message: "Search failed" }, { status: 500 });
     }
 }
+

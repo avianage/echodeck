@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { create as createYtDlp } from 'yt-dlp-exec';
 import path from 'node:path';
@@ -73,3 +74,4 @@ export async function GET(req: NextRequest) {
         }, { status: 500 });
     }
 }
+

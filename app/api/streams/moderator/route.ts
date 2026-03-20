@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
@@ -65,3 +66,4 @@ export async function POST(req: NextRequest) {
         message: action === "promote" ? "User promoted to moderator" : "Moderator role removed"
     });
 }
+

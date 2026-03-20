@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 // ts-expect-error No Types available
 // import youtubesearchapi from "youtube-search-api";
@@ -36,3 +37,4 @@ export async function GET(req: NextRequest) {
         });
     }
 }
+

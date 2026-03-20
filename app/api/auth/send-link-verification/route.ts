@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { Resend } from "resend";
@@ -41,3 +42,4 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ message: "Verification email sent" });
 }
+

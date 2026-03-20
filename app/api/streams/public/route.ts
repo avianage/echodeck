@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 
@@ -45,3 +46,4 @@ export async function GET() {
         return NextResponse.json({ message: "Error fetching public streams" }, { status: 500 });
     }
 }
+

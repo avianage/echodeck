@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 
 const ALLOWED_HOSTS = ['googlevideo.com', 'youtube.com', 'ytimg.com'];
@@ -35,3 +36,4 @@ export async function GET(req: NextRequest) {
         }
     });
 }
+

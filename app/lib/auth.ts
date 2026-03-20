@@ -6,7 +6,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prismaClient } from "@/app/lib/db";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// resend is now instantiated inside the handler to avoid build-time env var requirement
 
 export const authOptions: NextAuthOptions = {
     adapter: PrismaAdapter(prismaClient),
@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
         EmailProvider({
             from: "EchoDeck <noreply@avianage.in>",
             sendVerificationRequest: async ({ identifier: email, url }) => {
+                const resend = new Resend(process.env.RESEND_API_KEY);
                 await resend.emails.send({
                     from: "EchoDeck <noreply@avianage.in>",
                     to: email,
