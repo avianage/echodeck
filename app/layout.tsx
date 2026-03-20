@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { Providers } from "./provider";
 import React from "react";
 import { WindowsTitleBar } from "./components/WindowsTitleBar";
@@ -63,6 +65,7 @@ export default function RootLayout({
             {children}
           </MainLayout>
           <BottomNav />
+          <ToastContainer position="top-right" autoClose={3000} theme="dark" />
         </Providers>
       </body>
     </html>

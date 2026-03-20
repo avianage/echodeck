@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Share2, Play, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2, ShieldAlert, Timer } from "lucide-react";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
 import { PLAYLIST_REGEX, SPOTIFY_PLAYLIST_REGEX, YT_REGEX, SPOTIFY_TRACK_REGEX } from "@/app/lib/utils";
@@ -1350,8 +1349,6 @@ export default function StreamView({
                     )}
                 </div>
             )}
-
-            <ToastContainer position="top-right" autoClose={3000} theme="dark" />
 
             <ActivityLog 
                 logs={activityLogs} 

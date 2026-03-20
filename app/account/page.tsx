@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FriendActivityFeed } from "../components/FriendActivityFeed";
 import { PlayCircle } from "lucide-react";
+import { useDebounce } from "@/app/lib/useDebounce";
 
 export default function AccountPage() {
     const { data: session, update } = useSession();
@@ -39,6 +40,28 @@ export default function AccountPage() {
         "Jasmine", "Kevin", "Lily", "Mason", "Nora", "Oscar", 
         "Piper", "Quinn", "Riley", "Sophie", "Toby", "Uma"
     ];
+
+    const debouncedUsername = useDebounce(newUsername, 500);
+
+    useEffect(() => {
+        const checkUsername = async () => {
+            if (!isEditingUsername || !debouncedUsername || debouncedUsername === userData?.username) return;
+            if (debouncedUsername.length < 5) return;
+
+            try {
+                const res = await fetch(`/api/user/check-username?username=${debouncedUsername}`);
+                const data = await res.json();
+                if (!data.available) {
+                    toast.error(data.reason || "Username is taken", { toastId: "username-check" });
+                } else {
+                    toast.success("Username is available!", { toastId: "username-check", autoClose: 1500 });
+                }
+            } catch (err) {
+                // Ignore background check errors
+            }
+        };
+        checkUsername();
+    }, [debouncedUsername, isEditingUsername, userData?.username]);
 
     useEffect(() => {
         const fetchUserData = async () => {
