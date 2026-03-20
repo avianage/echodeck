@@ -98,45 +98,48 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                                     )}
                                 </td>
                                 <td className="px-8 py-6 text-right">
-                                    <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-2">
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
                                         {/* Assign / Revoke Creator */}
                                         {!isOwner && (
                                             user.platformRole === "CREATOR" ? (
                                                 <Button 
                                                     size="sm" 
-                                                    variant="ghost" 
-                                                    className="h-8 w-8 p-0 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 disabled:opacity-30"
+                                                    variant="outline" 
+                                                    className="h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest border-amber-500/20 bg-amber-500/5 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500/40 rounded-xl transition-all disabled:opacity-30"
                                                     onClick={() => onRoleUpdate(user.id, "revoke")}
-                                                    title={isSelf ? "Cannot modify self" : "Revoke Creator"}
+                                                    title={isSelf ? "Cannot modify self" : "Revoke Creator Perks"}
                                                     disabled={isSelf}
                                                 >
-                                                    <UserMinus className="w-4 h-4" />
+                                                    <UserMinus className="w-3.5 h-3.5" />
+                                                    Revoke
                                                 </Button>
                                             ) : (
                                                 <Button 
                                                     size="sm" 
-                                                    variant="ghost" 
-                                                    className="h-8 w-8 p-0 text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 disabled:opacity-30"
+                                                    variant="outline" 
+                                                    className="h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest border-blue-500/20 bg-blue-500/5 text-blue-500 hover:bg-blue-500/10 hover:border-blue-500/40 rounded-xl transition-all disabled:opacity-30"
                                                     onClick={() => onRoleUpdate(user.id, "assign")}
-                                                    title={isSelf ? "Cannot modify self" : "Assign Creator"}
+                                                    title={isSelf ? "Cannot modify self" : "Assign Creator Role"}
                                                     disabled={isSelf}
                                                 >
-                                                    <UserPlus className="w-4 h-4" />
+                                                    <UserPlus className="w-3.5 h-3.5" />
+                                                    Assign
                                                 </Button>
                                             )
                                         )}
-
+                                        
                                         {/* Ban / Timeout */}
                                         {!isOwner && (
                                             <Button 
                                                 size="sm" 
-                                                variant="ghost" 
-                                                className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30"
-                                                title={isSelf ? "Cannot restrict self" : "Ban / Timeout"}
+                                                variant="outline" 
+                                                className="h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500/10 hover:border-red-500/40 rounded-xl transition-all disabled:opacity-30"
                                                 onClick={() => onBanClick(user)}
                                                 disabled={isSelf}
+                                                title={isSelf ? "Cannot restrict self" : "Restrict account access"}
                                             >
-                                                <Ban className="w-4 h-4" />
+                                                <Ban className="w-3.5 h-3.5" />
+                                                Restrict
                                             </Button>
                                         )}
 
@@ -144,13 +147,13 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                                         {!isOwner && !isSelf && (
                                             <Button 
                                                 size="sm" 
-                                                variant="ghost" 
-                                                className={`h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                variant="outline" 
+                                                className={`h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest transition-all rounded-xl ${
                                                     isConfirmingDelete
-                                                        ? "bg-red-500 text-white hover:bg-red-600 rounded-lg animate-pulse"
-                                                        : "text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                                                        ? "bg-red-500 border-red-500 text-white hover:bg-red-600 animate-pulse"
+                                                        : "border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/5 hover:border-red-500/20"
                                                 }`}
-                                                title="Delete User"
+                                                title="Permanently Delete User"
                                                 onClick={() => handleDeleteClick(user)}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
