@@ -33,9 +33,7 @@ export default async function proxy(req: NextRequest) {
 
     if (!isExempt) {
         try {
-            const baseUrl = process.env.NODE_ENV === "development" 
-                ? `http://localhost:${req.nextUrl.port || process.env.PORT || 3000}` 
-                : req.nextUrl.origin;
+            const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
 
             const maintenanceRes = await fetch(
                 `${baseUrl}/api/admin/maintenance`,
