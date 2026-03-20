@@ -245,10 +245,11 @@ enum StreamEventType {
 }
 
 model MaintenanceMode {
-    id          String    @id @default("singleton") // always one record
-    isActive    Boolean   @default(false)
-    message     String?
-    startedAt   DateTime?
-    endsAt      DateTime? // null = indefinite
-    updatedBy   String    // owner userId
+    id         String    @id @default("singleton")
+    isActive   Boolean   @default(false)
+    message    String?
+    startedAt  DateTime?
+    endsAt     DateTime?
+    updatedBy  String
+    updatedAt  DateTime  @updatedAt
 }
