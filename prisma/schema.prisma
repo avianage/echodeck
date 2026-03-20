@@ -100,8 +100,8 @@ model Stream {
   userId        String
   addedById     String
   currentStream CurrentStream?
-  addedBy       User           @relation("addedBy", fields: [addedById], references: [id])
-  user          User           @relation("user", fields: [userId], references: [id])
+  addedBy       User           @relation("addedBy", fields: [addedById], references: [id], onDelete: Cascade)
+  user          User           @relation("user", fields: [userId], references: [id], onDelete: Cascade)
   upvotes       Upvote[]
 }
 
@@ -161,8 +161,8 @@ model Favorite {
   userId     String
   favoriteId String
   createdAt  DateTime @default(now())
-  favorite   User     @relation("targetUser", fields: [favoriteId], references: [id])
-  user       User     @relation("userFavorites", fields: [userId], references: [id])
+  favorite   User     @relation("targetUser", fields: [favoriteId], references: [id], onDelete: Cascade)
+  user       User     @relation("userFavorites", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, favoriteId])
 }
@@ -173,8 +173,8 @@ model StreamAccess {
   viewerId   String
   status     AccessStatus @default(PENDING)
   createdAt  DateTime     @default(now())
-  streamer   User         @relation("streamer", fields: [streamerId], references: [id])
-  viewer     User         @relation("viewer", fields: [viewerId], references: [id])
+  streamer   User         @relation("streamer", fields: [streamerId], references: [id], onDelete: Cascade)
+  viewer     User         @relation("viewer", fields: [viewerId], references: [id], onDelete: Cascade)
 
   @@unique([streamerId, viewerId])
 }
@@ -184,7 +184,7 @@ model Upvote {
   userId   String
   streamId String
   stream   Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
-  user     User   @relation(fields: [userId], references: [id])
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, streamId])
 }
