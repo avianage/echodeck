@@ -19,17 +19,19 @@ interface User {
     email: string | null;
     platformRole: string;
     isBanned: boolean;
+    bannedUntil: string | null;
 }
 
 interface UsersTableProps {
     users: User[];
     onRoleUpdate: (userId: string, action: "assign" | "revoke") => void;
     onBanClick: (user: User) => void;
+    onUnbanClick: (userId: string) => void;
     onDeleteClick?: (user: User) => void;
     currentUserId?: string;
 }
 
-export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, currentUserId }: UsersTableProps) {
+export function UsersTable({ users, onRoleUpdate, onBanClick, onUnbanClick, onDeleteClick, currentUserId }: UsersTableProps) {
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const handleDeleteClick = (user: User) => {
@@ -67,6 +69,7 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                         const isSelf = user.id === currentUserId;
                         const isOwner = user.platformRole === "OWNER";
                         const isConfirmingDelete = confirmDeleteId === user.id;
+                        const isRestricted = user.isBanned || (user.bannedUntil && new Date(user.bannedUntil) > new Date());
 
                         return (
                             <tr key={user.id} className="hover:bg-white/[0.02] transition-colors group">
@@ -85,10 +88,17 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                                     </span>
                                 </td>
                                 <td className="px-6 py-6 text-sm">
-                                    {user.isBanned ? (
-                                        <div className="flex items-center gap-1.5 text-red-500">
-                                            <AlertCircle className="w-3.5 h-3.5" />
-                                            <span className="text-xs font-bold">Banned</span>
+                                    {isRestricted ? (
+                                        <div className="flex flex-col gap-0.5">
+                                            <div className="flex items-center gap-1.5 text-red-500">
+                                                <AlertCircle className="w-3.5 h-3.5" />
+                                                <span className="text-xs font-bold">{user.isBanned ? "Banned" : "Timed Out"}</span>
+                                            </div>
+                                            {user.bannedUntil && !user.isBanned && (
+                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                    Until {new Date(user.bannedUntil).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                </span>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-1.5 text-green-500">
@@ -99,6 +109,20 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                                 </td>
                                 <td className="px-8 py-6 text-right">
                                     <div className="flex flex-wrap items-center justify-end gap-2">
+                                        {/* Restore / Lift Restriction */}
+                                        {isRestricted && !isOwner && !isSelf && (
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                className="h-8 px-3 gap-1.5 text-[10px] font-black uppercase tracking-widest border-green-500/20 bg-green-500/5 text-green-500 hover:bg-green-500/10 hover:border-green-500/40 rounded-xl transition-all"
+                                                onClick={() => onUnbanClick(user.id)}
+                                                title="Restore account access"
+                                            >
+                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                Restore
+                                            </Button>
+                                        )}
+
                                         {/* Assign / Revoke Creator */}
                                         {!isOwner && (
                                             user.platformRole === "CREATOR" ? (
@@ -129,7 +153,7 @@ export function UsersTable({ users, onRoleUpdate, onBanClick, onDeleteClick, cur
                                         )}
                                         
                                         {/* Ban / Timeout */}
-                                        {!isOwner && (
+                                        {!isOwner && !isRestricted && (
                                             <Button 
                                                 size="sm" 
                                                 variant="outline" 

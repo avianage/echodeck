@@ -37,17 +37,18 @@ export async function POST(req: NextRequest) {
                     banReason: null,
                 }
             });
-            return NextResponse.json({ message: "Platform restriction lifted" });
+            return NextResponse.json({ message: "Restriction lifted successfully" });
         }
 
-        const durationMap: Record<string, number | null> = {
-            "1d": 1, "1w": 7, "1m": 30, "permanent": null
-        };
-
-        const days = durationMap[duration] ?? null;
-        const bannedUntil = (type === "timeout" && days !== null)
-            ? new Date(Date.now() + days * 24 * 60 * 60 * 1000)
-            : null;
+        let bannedUntil: Date | null = null;
+        if (type === "timeout" && duration !== "permanent") {
+            const now = Date.now();
+            if (duration === "1min") bannedUntil = new Date(now + 60 * 1000);
+            else if (duration === "1hr") bannedUntil = new Date(now + 60 * 60 * 1000);
+            else if (duration === "1d") bannedUntil = new Date(now + 24 * 60 * 60 * 1000);
+            else if (duration === "1w") bannedUntil = new Date(now + 7 * 24 * 60 * 60 * 1000);
+            else if (duration === "1mo") bannedUntil = new Date(now + 30 * 24 * 60 * 60 * 1000);
+        }
 
         await prismaClient.user.update({
             where: { id: targetUserId },

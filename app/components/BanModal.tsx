@@ -15,14 +15,14 @@ interface BanModalProps {
 
 export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: BanModalProps) {
     const [type, setType] = useState<"ban" | "timeout">("timeout");
-    const [duration, setDuration] = useState("1d");
+    const [duration, setDuration] = useState("1hr");
     const [reason, setReason] = useState("");
 
     // Reset state on open
     useEffect(() => {
         if (isOpen) {
             setType("timeout");
-            setDuration("1h");
+            setDuration("1hr");
             setReason("");
         }
     }, [isOpen]);
@@ -89,8 +89,8 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
                             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Duration</label>
                             <div className="flex flex-wrap gap-2">
                                 {[
-                                    { id: "1m", label: "1 Minute" },
-                                    { id: "1h", label: "1 Hour" },
+                                    { id: "1min", label: "1 Minute" },
+                                    { id: "1hr", label: "1 Hour" },
                                     { id: "1d", label: "1 Day" },
                                     { id: "1w", label: "1 Week" },
                                     { id: "1mo", label: "1 Month" }

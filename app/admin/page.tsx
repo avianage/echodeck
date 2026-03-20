@@ -273,6 +273,24 @@ export default function AdminDashboard() {
                                     setSelectedUser(user);
                                     setIsBanModalOpen(true);
                                 }}
+                                onUnbanClick={async (targetUserId) => {
+                                    try {
+                                        const res = await fetch("/api/admin/ban", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ targetUserId, type: "unban" })
+                                        });
+                                        const data = await res.json();
+                                        if (res.ok) {
+                                            toast.success(data.message);
+                                            fetchData();
+                                        } else {
+                                            toast.error(data.message);
+                                        }
+                                    } catch (error) {
+                                        toast.error("Error lifting restriction.");
+                                    }
+                                }}
                                 onDeleteClick={handleDeleteUser}
                             />
                         </CardContent>
