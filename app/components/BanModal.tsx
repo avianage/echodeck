@@ -22,7 +22,7 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
     useEffect(() => {
         if (isOpen) {
             setType("timeout");
-            setDuration("1d");
+            setDuration("1h");
             setReason("");
         }
     }, [isOpen]);
@@ -30,7 +30,7 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
     if (!isOpen) return null;
 
     const handleConfirm = () => {
-        onConfirm(type, duration, reason);
+        onConfirm(type, type === "ban" ? "permanent" : duration, reason);
     };
 
     return (
@@ -84,29 +84,39 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
                     </div>
 
                     {/* Duration */}
-                    <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Duration</label>
-                        <div className="flex flex-wrap gap-2">
-                            {[
-                                { id: "1d", label: "1 Day" },
-                                { id: "1w", label: "1 Week" },
-                                { id: "1m", label: "1 Month" },
-                                { id: "permanent", label: "Permanent" }
-                            ].map((d) => (
-                                <button
-                                    key={d.id}
-                                    onClick={() => setDuration(d.id)}
-                                    className={`px-4 py-2 rounded-xl border text-[11px] font-black uppercase tracking-tighter transition-all ${
-                                        duration === d.id 
-                                            ? "bg-white/10 border-white/20 text-white" 
-                                            : "bg-transparent border-white/5 text-gray-600 hover:text-gray-400 hover:border-white/10"
-                                    }`}
-                                >
-                                    {d.label}
-                                </button>
-                            ))}
+                    {type === "timeout" ? (
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Duration</label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { id: "1m", label: "1 Minute" },
+                                    { id: "1h", label: "1 Hour" },
+                                    { id: "1d", label: "1 Day" },
+                                    { id: "1w", label: "1 Week" },
+                                    { id: "1mo", label: "1 Month" }
+                                ].map((d) => (
+                                    <button
+                                        key={d.id}
+                                        onClick={() => setDuration(d.id)}
+                                        className={`px-4 py-2 rounded-xl border text-[11px] font-black uppercase tracking-tighter transition-all ${
+                                            duration === d.id 
+                                                ? "bg-white/10 border-white/20 text-white" 
+                                                : "bg-transparent border-white/5 text-gray-600 hover:text-gray-400 hover:border-white/10"
+                                        }`}
+                                    >
+                                        {d.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Duration</label>
+                            <div className="px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 font-black text-xs uppercase tracking-widest inline-block">
+                                Permanent
+                            </div>
+                        </div>
+                    )}
 
                     {/* Reason */}
                     <div className="space-y-4">

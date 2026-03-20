@@ -1,5 +1,5 @@
 export type PlatformRole = "OWNER" | "CREATOR" | "MEMBER" | "GUEST";
-export type StreamRole = "OWNER" | "CREATOR" | "MODERATOR" | "MEMBER" | "GUEST";
+export type StreamRole = "OWNER" | "CREATOR" | "MODERATOR" | "MEMBER" | "GUEST" | "BANNED";
 
 export type Permission =
     | "stream:create"
@@ -22,7 +22,9 @@ export type Permission =
     | "platform:assign:creator" // owner only
     | "platform:revoke:creator" // owner only
     | "platform:view:all:streams"
-    | "platform:manage:streams";
+    | "platform:manage:streams"
+    | "access:manage"
+    | "stream:update";
 
 const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
     OWNER: [
@@ -33,7 +35,8 @@ const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
         "session:ban:stream", "session:timeout:stream", "session:promote:mod",
         "platform:ban:user", "platform:timeout:user",
         "platform:assign:creator", "platform:revoke:creator",
-        "platform:view:all:streams", "platform:manage:streams"
+        "platform:view:all:streams", "platform:manage:streams",
+        "access:manage", "stream:update"
     ],
     CREATOR: [
         "stream:create", "stream:start", "stream:end",
@@ -41,18 +44,21 @@ const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
         "playback:skip", "playback:pause", "playback:play",
         "vote:cast",
         "session:ban:stream", "session:timeout:stream", "session:promote:mod",
+        "access:manage", "stream:update",
     ],
     MODERATOR: [
         "queue:add", "queue:remove:own", "queue:remove:any",
         "playback:skip",
         "vote:cast",
         "session:ban:stream", "session:timeout:stream",
+        "access:manage", "stream:update",
     ],
     MEMBER: [
         "queue:add", "queue:remove:own",
         "vote:cast",
     ],
     GUEST: [],
+    BANNED: [],
 };
 
 export function hasPermission(role: StreamRole, permission: Permission): boolean {

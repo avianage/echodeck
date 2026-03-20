@@ -28,20 +28,20 @@ function SignInContent() {
     };
 
     return (
-        <div className="min-h-screen bg-[#111111] flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-white">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-[#4a90e2]">
-                    EchoDeck
-                </h2>
-                <p className="mt-2 text-center text-sm text-gray-400">
-                    {linkProvider 
-                        ? `Link your ${linkProvider} account`
-                        : "Collaborative Music Streaming"}
-                </p>
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-[#111111] px-4 py-8 text-white">
+            <div className="w-full max-w-sm sm:max-w-md bg-[#1a1a1a] rounded-2xl sm:rounded-3xl p-6 sm:p-8 border border-[#333] shadow">
+                <div className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
+                    <h2 className="text-center text-3xl font-extrabold text-[#4a90e2]">
+                        EchoDeck
+                    </h2>
+                    <p className="mt-2 text-center text-sm text-gray-400">
+                        {linkProvider 
+                            ? `Link your ${linkProvider} account`
+                            : "Collaborative Music Streaming"}
+                    </p>
+                </div>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-[#1a1a1a] py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-[#333]">
+                <div className="sm:mx-auto sm:w-full sm:max-w-md">
                     <form className="space-y-6" onSubmit={handleEmailSignIn}>
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-gray-300">

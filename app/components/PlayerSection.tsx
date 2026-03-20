@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import ReactPlayer from "react-player";
 import Image from "next/image";
 import { Lock, Users, CheckCircle, XCircle, Play, VolumeX, Volume2 } from "lucide-react";
@@ -33,7 +33,6 @@ interface PlayerSectionProps {
     creatorId: string;
     currentUserId: string | null;
     accessStatus: string | null;
-    pendingRequests: any[];
     volume: number;
     reactPlayerRef: React.RefObject<ReactPlayer | null>;
     onReady: () => void;
@@ -42,7 +41,6 @@ interface PlayerSectionProps {
     onEnded: () => void;
     onError: (err: any) => void;
     onGoLive: () => void;
-    onApprove: (viewerId: string, approve: boolean) => void;
     onMuteToggle: () => void;
     onVolumeChange: (v: number) => void;
     onPlayClick: () => void;
@@ -63,7 +61,6 @@ export function PlayerSection({
     creatorId,
     currentUserId,
     accessStatus,
-    pendingRequests,
     volume,
     reactPlayerRef,
     onReady,
@@ -72,13 +69,42 @@ export function PlayerSection({
     onEnded,
     onError,
     onGoLive,
-    onApprove,
     onMuteToggle,
     onVolumeChange,
     onPlayClick,
     onRequestAccess,
     isResolving
 }: PlayerSectionProps) {
+
+    // Enforce 1x playback speed aggressively against extensions
+    useEffect(() => {
+        const interval = setInterval(() => {
+            // Force native DOM elements (audio/video)
+            const mediaElements = document.querySelectorAll('video, audio');
+            mediaElements.forEach((el) => {
+                const media = el as HTMLMediaElement;
+                if (media.playbackRate !== 1) {
+                    media.playbackRate = 1;
+                }
+                if (media.defaultPlaybackRate !== 1) {
+                    media.defaultPlaybackRate = 1;
+                }
+            });
+
+            // Force ReactPlayer (YouTube Iframe API)
+            if (reactPlayerRef?.current) {
+                const internalPlayer = reactPlayerRef.current.getInternalPlayer();
+                if (internalPlayer && typeof internalPlayer.getPlaybackRate === 'function' && typeof internalPlayer.setPlaybackRate === 'function') {
+                    const currentRate = internalPlayer.getPlaybackRate();
+                    if (currentRate !== 1) {
+                        internalPlayer.setPlaybackRate(1);
+                    }
+                }
+            }
+        }, 500); // Fast interval to immediately counter extensions
+
+        return () => clearInterval(interval);
+    }, [reactPlayerRef]);
 
     if (!currentVideo) {
         return (
@@ -92,12 +118,13 @@ export function PlayerSection({
     if (!playVideo) {
         return (
             <div className="w-full">
-                <div className="relative w-full aspect-video md:h-[450px]">
+                <div className="relative w-full aspect-video sm:h-[280px] md:h-[360px] lg:h-[450px] bg-black">
                     {currentVideo.bigImg ? (
                         <Image
                             src={currentVideo.bigImg}
                             alt={currentVideo.title}
                             fill
+                            sizes="(max-width: 768px) 100vw, 800px"
                             className="object-contain"
                         />
                     ) : (
@@ -113,32 +140,7 @@ export function PlayerSection({
 
     return (
         <div className="w-full relative">
-            {/* streamer approval UI */}
-            {currentUserId === creatorId && pendingRequests.length > 0 && (
-                <div className="absolute top-4 left-4 z-50 pointer-events-auto">
-                    <div className="bg-gray-900/90 border border-blue-500/30 rounded-2xl p-4 shadow-2xl backdrop-blur-md max-w-xs animate-in slide-in-from-left">
-                        <h4 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                            <Users className="w-4 h-4" /> Join Requests ({pendingRequests.length})
-                        </h4>
-                        <div className="space-y-3 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                            {pendingRequests.map((req) => (
-                                <div key={req.id} className="flex justify-between items-center gap-3 bg-white/5 p-2 rounded-xl">
-                                    <p className="text-xs font-medium text-white truncate max-w-[120px]">{req.viewer.email}</p>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => onApprove(req.viewer.id, true)} className="p-1 hover:bg-green-500/20 text-green-500 rounded-md transition-colors">
-                                            <CheckCircle className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => onApprove(req.viewer.id, false)} className="p-1 hover:bg-red-500/20 text-red-500 rounded-md transition-colors">
-                                            <XCircle className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-            <div className="relative w-full aspect-video md:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
+            <div className="relative w-full aspect-video sm:h-[280px] md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
                 {isResolving && (
                     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm gap-4">
                         <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
@@ -153,6 +155,7 @@ export function PlayerSection({
                                 src={currentVideo.bigImg}
                                 alt={currentVideo.title}
                                 fill
+                                sizes="(max-width: 768px) 100vw, 400px"
                                 className="object-contain rounded-xl opacity-80"
                             />
                         </div>

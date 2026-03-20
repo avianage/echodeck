@@ -114,7 +114,7 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-white/5 pb-8 w-full">
                     <div>
                         <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-                            Welcome, {(session.user as any).username ? `@${(session.user as any).username}` : (session.user.name?.split(' ')[0] || 'DJ')}
+                            Welcome, {(session.user as any).username ? `@${(session.user as any).username}` : (session.user.name?.split(' ')?.[0] || 'DJ')}
                         </h1>
                         <p className="text-gray-400 mt-2">The deck is ready. What&apos;s your move?</p>
                     </div>
@@ -255,7 +255,7 @@ export default function Dashboard() {
                                                     <div className="overflow-hidden flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <p className="text-sm font-semibold text-white truncate group-hover/item:text-blue-400 transition-colors">
-                                                                {fav.email.split('@')[0]}
+                                                                {fav.email?.split('@')?.[0]}
                                                             </p>
                                                             {fav.isOnline && (
                                                                 <span className="shrink-0 text-[8px] font-black bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-sm border border-green-500/20 tracking-tighter uppercase animate-pulse">

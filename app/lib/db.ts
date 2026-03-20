@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client"
 import { Pool } from "pg"
+// Force reload of Prisma Client
 import { PrismaPg } from "@prisma/adapter-pg"
 
 const prismaClientSingleton = () => {

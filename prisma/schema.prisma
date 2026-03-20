@@ -18,6 +18,7 @@ model User {
   isBanned              Boolean            @default(false)
   banReason             String?
   bannedUntil           DateTime?
+  bannedAt              DateTime?
   spotifyConnected      Boolean            @default(false)
   spotifyAccessToken    String?
   spotifyRefreshToken   String?
@@ -126,6 +127,7 @@ model SessionMember {
   isBanned    Boolean    @default(false)
   banReason   String?
   bannedUntil DateTime?
+  bannedAt    DateTime?
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, creatorId])
@@ -240,4 +242,13 @@ enum StreamEventType {
   MOD_DEMOTED
   SONG_REMOVED_BY_MOD
   SONG_SKIPPED_BY_CREATOR
+}
+
+model MaintenanceMode {
+    id          String    @id @default("singleton") // always one record
+    isActive    Boolean   @default(false)
+    message     String?
+    startedAt   DateTime?
+    endsAt      DateTime? // null = indefinite
+    updatedBy   String    // owner userId
 }

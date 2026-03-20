@@ -13,9 +13,6 @@ import { toast } from "react-toastify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FriendActivityFeed } from "../components/FriendActivityFeed";
-import { UsersTable } from "../components/admin/UsersTable";
-import { StreamsList } from "../components/admin/StreamsList";
-import { BanModal } from "../components/BanModal";
 import { PlayCircle } from "lucide-react";
 
 export default function AccountPage() {
@@ -29,14 +26,8 @@ export default function AccountPage() {
     const [newDisplayName, setNewDisplayName] = useState("");
     const [updatingDisplayName, setUpdatingDisplayName] = useState(false);
     const [allowFriendRequests, setAllowFriendRequests] = useState(true);
+    const [isPublic, setIsPublic] = useState(true);
     const [partyCode, setPartyCode] = useState<string | null>(null);
-
-    // Owner Management State
-    const [allUsers, setAllUsers] = useState<any[]>([]);
-    const [allStreams, setAllStreams] = useState<any[]>([]);
-    const [selectedUserForBan, setSelectedUserForBan] = useState<any>(null);
-    const [isBanModalOpen, setIsBanModalOpen] = useState(false);
-    const [isManagementLoading, setIsManagementLoading] = useState(false);
 
     // Account Deletion State
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -62,6 +53,7 @@ export default function AccountPage() {
                     const privRes = await fetch("/api/user/privacy");
                     const privData = await privRes.json();
                     if (privData.allowFriendRequests !== undefined) setAllowFriendRequests(privData.allowFriendRequests);
+                    if (privData.isPublic !== undefined) setIsPublic(privData.isPublic);
                     setPartyCode(data.user.partyCode);
                 }
             } catch (err) {
@@ -72,50 +64,7 @@ export default function AccountPage() {
         };
         fetchUserData();
 
-        if ((session?.user as any)?.platformRole === "OWNER") {
-            fetchManagementData();
-        }
     }, [session]);
-
-    const fetchManagementData = async () => {
-        setIsManagementLoading(true);
-        try {
-            const [uRes, sRes] = await Promise.all([
-                fetch("/api/admin/users"),
-                fetch("/api/admin/streams")
-            ]);
-            if (uRes.ok) {
-                const uData = await uRes.json();
-                setAllUsers(uData.users);
-            }
-            if (sRes.ok) {
-                const sData = await sRes.json();
-                setAllStreams(sData.streams);
-            }
-        } catch (err) {
-            console.error("Failed to fetch management data:", err);
-        } finally {
-            setIsManagementLoading(false);
-        }
-    };
-
-    const handleRoleUpdate = async (userId: string, action: "assign" | "revoke") => {
-        try {
-            const res = await fetch("/api/admin/assign-creator", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, action })
-            });
-            if (res.ok) {
-                toast.success(`Role ${action}ed successfully`);
-                fetchManagementData();
-            } else {
-                toast.error("Failed to update role");
-            }
-        } catch (err) {
-            toast.error("Error updating role");
-        }
-    };
 
     const handleUpdateUsername = async () => {
         if (!newUsername.trim() || newUsername === userData?.username) {
@@ -191,6 +140,23 @@ export default function AccountPage() {
             setAllowFriendRequests(!nextState);
         }
     };
+    
+    const handleToggleIsPublic = async () => {
+        const nextState = !isPublic;
+        setIsPublic(nextState);
+        try {
+            const res = await fetch("/api/user/privacy", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ isPublic: nextState })
+            });
+            if (!res.ok) throw new Error();
+            toast.success(`Stream is now ${nextState ? "Public" : "Private"}`);
+        } catch (err) {
+            toast.error("Failed to update privacy settings");
+            setIsPublic(!nextState);
+        }
+    };
 
     const handleDisconnectProvider = async (provider: "google" | "spotify") => {
         try {
@@ -215,31 +181,6 @@ export default function AccountPage() {
             }
         } catch (err) {
             toast.error(`Error disconnecting ${provider}`);
-        }
-    };
-
-    const handleBanAction = async (type: "ban" | "timeout", duration: string, reason: string) => {
-        if (!selectedUserForBan) return;
-        try {
-            const res = await fetch("/api/admin/ban", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId: selectedUserForBan.id,
-                    type,
-                    duration,
-                    reason
-                })
-            });
-            if (res.ok) {
-                toast.success(`${type === "ban" ? "Ban" : "Timeout"} applied`);
-                fetchManagementData();
-                setIsBanModalOpen(false);
-            } else {
-                toast.error("Failed to apply restriction");
-            }
-        } catch (err) {
-            toast.error("Error applying restriction");
         }
     };
 
@@ -313,15 +254,26 @@ export default function AccountPage() {
                             </h1>
                             <p className="text-gray-400 mt-2">Manage your profile and account settings.</p>
                         </div>
-                        {user.username && (
-                            <Link 
-                                href={`/user/${user.username}`}
-                                className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 hover:border-primary/50 transition-all flex items-center gap-2 group w-fit"
-                            >
-                                View My Public Profile
-                                <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform text-primary" />
-                            </Link>
-                        )}
+                        <div className="flex flex-col gap-3">
+                            {user.username && (
+                                <Link 
+                                    href={`/user/${user.username}`}
+                                    className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/20 hover:border-primary/50 transition-all flex items-center justify-center gap-2 group w-full sm:w-fit"
+                                >
+                                    View My Public Profile
+                                    <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform text-primary" />
+                                </Link>
+                            )}
+                            {user.platformRole === "OWNER" && (
+                                <Link 
+                                    href="/admin"
+                                    className="px-5 py-2.5 bg-red-500/10 border border-red-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/20 hover:border-red-500/50 transition-all flex items-center justify-center gap-2 group w-full sm:w-fit"
+                                >
+                                    <ShieldAlert className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                    Admin Dashboard
+                                </Link>
+                            )}
+                        </div>
                     </header>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -472,17 +424,30 @@ export default function AccountPage() {
                                                 )}
                                             </div>
                                         </div>
-                                        {isCreator && (
-                                            <div className="flex flex-col items-end gap-1">
-                                                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Friend Requests</p>
-                                                <button
-                                                    onClick={handleToggleFriendRequests}
-                                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all text-[8px] font-bold tracking-widest uppercase
-                                                        ${allowFriendRequests ? "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20" : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"}`}
-                                                >
-                                                    {allowFriendRequests ? <Users className="w-2.5 h-2.5" /> : <ShieldAlert className="w-2.5 h-2.5" />}
-                                                    {allowFriendRequests ? "On" : "Off"}
-                                                </button>
+                                         {isCreator && (
+                                            <div className="flex gap-4">
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Friend Requests</p>
+                                                    <button
+                                                        onClick={handleToggleFriendRequests}
+                                                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all text-[8px] font-bold tracking-widest uppercase
+                                                            ${allowFriendRequests ? "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20" : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"}`}
+                                                    >
+                                                        {allowFriendRequests ? <Users className="w-2.5 h-2.5" /> : <ShieldAlert className="w-2.5 h-2.5" />}
+                                                        {allowFriendRequests ? "On" : "Off"}
+                                                    </button>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Stream Privacy</p>
+                                                    <button
+                                                        onClick={handleToggleIsPublic}
+                                                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all text-[8px] font-bold tracking-widest uppercase
+                                                            ${isPublic ? "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20" : "bg-accent/10 text-accent border-accent/20 hover:bg-accent/20"}`}
+                                                    >
+                                                        {isPublic ? <ExternalLink className="w-2.5 h-2.5" /> : <ShieldAlert className="w-2.5 h-2.5" />}
+                                                        {isPublic ? "Public" : "Private"}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -624,61 +589,6 @@ export default function AccountPage() {
                         </div>
                     </div>
 
-                    {/* OWNER MANAGEMENT SECTION */}
-                    {(session.user as any).platformRole === "OWNER" && (
-                        <div className="space-y-8 pt-12 border-t border-white/5 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                            <header className="flex items-center gap-4">
-                                <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-500">
-                                    <Shield className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-black tracking-tighter uppercase italic">Platform Control Center</h2>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Administrative access granted</p>
-                                </div>
-                            </header>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                {/* Global User Management */}
-                                <Card className="lg:col-span-2 bg-gray-900/40 border-white/5 backdrop-blur-xl rounded-[2.5rem] overflow-hidden shadow-2xl">
-                                    <CardHeader className="p-8 border-b border-white/5 flex flex-row items-center justify-between bg-white/[0.02]">
-                                        <CardTitle className="text-lg font-black uppercase tracking-widest flex items-center gap-3 italic text-blue-400">
-                                            <Users className="w-5 h-5" /> User Management
-                                        </CardTitle>
-                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">{allUsers.length} total</span>
-                                    </CardHeader>
-                                    <CardContent className="p-0">
-                                        <UsersTable
-                                            users={allUsers}
-                                            currentUserId={(session?.user as any)?.id}
-                                            onRoleUpdate={handleRoleUpdate}
-                                            onBanClick={(user) => {
-                                                setSelectedUserForBan(user);
-                                                setIsBanModalOpen(true);
-                                            }}
-                                        />
-                                    </CardContent>
-                                </Card>
-
-                                {/* Global Stream Management */}
-                                <Card className="bg-gray-900/40 border-white/5 backdrop-blur-xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col">
-                                    <CardHeader className="p-8 border-b border-white/5 bg-white/[0.02]">
-                                        <CardTitle className="text-lg font-black uppercase tracking-widest flex items-center gap-3 italic text-accent">
-                                            <PlayCircle className="w-5 h-5" /> Live Streams
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="p-0 flex-1 overflow-y-auto max-h-[600px]">
-                                        <StreamsList
-                                            streams={allStreams}
-                                            onForceClose={(id) => {
-                                                toast.info("Force close functionality coming soon");
-                                            }}
-                                        />
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Danger Zone */}
                     <div className="space-y-6 pt-12 border-t border-white/5 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                         <h2 className="text-sm font-black text-red-500 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -750,16 +660,6 @@ export default function AccountPage() {
                 </div>
             )}
 
-            {/* Ban Modal for Owner */}
-            {selectedUserForBan && (
-                <BanModal
-                    isOpen={isBanModalOpen}
-                    targetUsername={selectedUserForBan.username || "User"}
-                    scope="platform"
-                    onClose={() => setIsBanModalOpen(false)}
-                    onConfirm={handleBanAction}
-                />
-            )}
         </div>
     );
 }

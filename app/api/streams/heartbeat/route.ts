@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
-import { isOwner } from "@/app/lib/getSessionRole";
+import { getStreamRole, isOwner } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 const HeartbeatSchema = z.object({
     creatorId: z.string(),
@@ -52,8 +53,8 @@ export async function POST(req: NextRequest) {
             const timeDrift = Math.abs((existing?.currentTime ?? 0) - data.currentTime);
             const pauseChanged = existing?.isPaused !== data.isPaused;
 
-            if (timeDrift > 1 || pauseChanged || !existing) {
-                await prismaClient.currentStream.upsert({
+            // Always update updatedAt to prevent listener staleness during pause
+            await prismaClient.currentStream.upsert({
                     where: { userId: data.creatorId },
                     update: {
                         currentTime: data.currentTime,
@@ -66,21 +67,34 @@ export async function POST(req: NextRequest) {
                         isPaused: data.isPaused ?? false,
                     },
                 });
-            }
             return NextResponse.json({ message: "Heartbeat updated" });
         }
 
         // --- LISTENER / VIEWER LOGIC ---
         // 1. Fetch current state and previous activity
-        const [currentStream, listenerActivity] = await Promise.all([
+        const [currentStream, listenerActivity, creator, streamRole] = await Promise.all([
             prismaClient.currentStream.findUnique({
                 where: { userId: data.creatorId },
                 include: { stream: true }
             }),
             prismaClient.listeningActivity.findUnique({
                 where: { userId: user.id }
-            })
+            }),
+            prismaClient.user.findUnique({
+                where: { id: data.creatorId },
+                select: { isPublic: true }
+            }),
+            getStreamRole(user.id, data.creatorId)
         ]);
+
+        if (streamRole === "BANNED") {
+            return NextResponse.json({ message: "Access restricted" }, { status: 403 });
+        }
+
+        if (streamRole === "GUEST" && creator && !creator.isPublic) {
+            // If private and guest (no access), block sync
+            return NextResponse.json({ message: "Access restricted" }, { status: 403 });
+        }
 
         if (!currentStream) {
             return NextResponse.json({ message: "No active stream" }, { status: 404 });
@@ -146,6 +160,7 @@ export async function POST(req: NextRequest) {
             viewerCount: currentStream.viewerCount,
             actualViewerCount: currentStream.viewerCount,
             stream: currentStream.stream,
+            isPublic: creator?.isPublic ?? true,
             events: pendingEvents
         });
 

@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 const DownvoteSchema = z.object({
     streamId: z.string()
@@ -20,19 +22,19 @@ export async function POST(req: NextRequest) {
             where: {
                 email: session.user.email,
             },
-            select: { id: true, isBanned: true, bannedUntil: true }
+            select: { id: true, isBanned: true, bannedUntil: true, platformRole: true }
         });
-
-        if (user?.isBanned) {
-            return NextResponse.json({ message: "Account banned" }, { status: 403 });
-        }
-
-        if (user?.bannedUntil && new Date(user.bannedUntil) > new Date()) {
-            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
-        }
 
         if (!user) {
             return NextResponse.json({ message: "User not found" }, { status: 403 });
+        }
+
+        if (user.isBanned) {
+            return NextResponse.json({ message: "Account banned" }, { status: 403 });
+        }
+
+        if (user.bannedUntil && new Date(user.bannedUntil) > new Date()) {
+            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
         }
 
         const data = DownvoteSchema.parse(await req.json());
@@ -44,6 +46,11 @@ export async function POST(req: NextRequest) {
 
         if (!stream) {
             return NextResponse.json({ message: "Invalid stream ID" }, { status: 404 });
+        }
+
+        const role = await getStreamRole(user.id, stream.userId);
+        if (!hasPermission(role, "vote:cast")) {
+            return NextResponse.json({ message: "Action restricted from this stream" }, { status: 403 });
         }
 
         const creator = await prismaClient.user.findUnique({

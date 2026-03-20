@@ -10,9 +10,10 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { allowFriendRequests } = await req.json();
+        const { allowFriendRequests, isPublic } = await req.json();
         const updateData: any = {};
         if (allowFriendRequests !== undefined) updateData.allowFriendRequests = allowFriendRequests;
+        if (isPublic !== undefined) updateData.isPublic = isPublic;
 
         await prismaClient.user.update({
             where: { email: session.user.email },
@@ -32,8 +33,11 @@ export async function GET(req: NextRequest) {
 
     const user = await prismaClient.user.findUnique({
         where: { email: session.user.email },
-        select: { allowFriendRequests: true }
+        select: { allowFriendRequests: true, isPublic: true }
     });
 
-    return NextResponse.json({ allowFriendRequests: user?.allowFriendRequests });
+    return NextResponse.json({ 
+        allowFriendRequests: user?.allowFriendRequests,
+        isPublic: user?.isPublic 
+    });
 }

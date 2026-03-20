@@ -38,16 +38,17 @@ export function QueueSection({ queue, currentUserId, creatorId, onVote, onRemove
                     <CardContent className="p-8 flex items-center justify-center opacity-50">Empty Queue</CardContent>
                 </Card>
             ) : (
-                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-3 max-h-[300px] sm:max-h-[400px] lg:max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                     {queue.map((video, index) => (
                         <Card key={`${video.id}-${index}`} className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
                             <CardContent className="p-3 flex items-center gap-4">
-                                <div className="w-20 h-12 relative flex-shrink-0">
+                                <div className="w-16 h-10 sm:w-20 sm:h-12 relative flex-shrink-0">
                                     {video.extractedId ? (
                                         <Image
                                             src={`https://img.youtube.com/vi/${video.extractedId}/mqdefault.jpg`}
                                             alt={video.title}
                                             fill
+                                            sizes="80px"
                                             className="rounded object-cover"
                                         />
                                     ) : (

@@ -36,8 +36,8 @@ export default async function Party(props: { params: Promise<{ creatorId: string
     redirect(`/party/${user.partyCode}`);
   }
 
-  // Determine if live: CurrentStream exists AND was updated in the last 15 seconds
-  const isLive = user.currentStream && (Date.now() - new Date(user.currentStream.updatedAt).getTime() < 15000);
+  // Determine if live: CurrentStream exists AND was updated in the last 5 seconds
+  const isLive = user.currentStream && (Date.now() - new Date(user.currentStream.updatedAt).getTime() < 5000);
 
   if (!isLive) {
     return (

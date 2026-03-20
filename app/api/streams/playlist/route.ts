@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-// @ts-expect-error No types available
+// @ts-ignore
 import YouTubeSearchApi from "youtube-search-api";
 import { z } from "zod";
 import { PLAYLIST_REGEX, SPOTIFY_PLAYLIST_REGEX } from "@/app/lib/utils";
 import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
 import { authOptions } from "@/app/lib/auth";
-// @ts-expect-error No types available
-import spotifyUrlInfo from "spotify-url-info";
+import * as _spotifyUrlInfo from "spotify-url-info";
+const spotifyUrlInfo = (_spotifyUrlInfo as any).default || _spotifyUrlInfo;
 
 const { getTracks } = spotifyUrlInfo(fetch as any);
 

@@ -38,7 +38,7 @@ export function SearchBar({ videoLink, searchResults, isSearching, loading, onCh
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 10 }}
-                            className="absolute z-50 left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto custom-scrollbar"
+                            className="absolute z-50 left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden max-h-52 sm:max-h-72 md:max-h-80 overflow-y-auto custom-scrollbar"
                         >
                             {searchResults.map((video) => (
                                 <button
@@ -51,6 +51,7 @@ export function SearchBar({ videoLink, searchResults, isSearching, loading, onCh
                                             src={video.thumbnail}
                                             alt=""
                                             fill
+                                            sizes="64px"
                                             className="rounded object-cover"
                                         />
                                     </div>

@@ -16,12 +16,12 @@ export function PlaylistModal({ isOpen, title, videos, onClose, onAddOne, onAddA
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-sm">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+                        className="bg-gray-900 border border-gray-800 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl max-h-[90vh] sm:max-h-[80vh] overflow-hidden flex flex-col"
                     >
                         <div className="p-6 border-b border-gray-800 flex justify-between items-center">
                             <div>
@@ -46,6 +46,7 @@ export function PlaylistModal({ isOpen, title, videos, onClose, onAddOne, onAddA
                                                 src={video.thumbnail}
                                                 alt={video.title}
                                                 fill
+                                                sizes="96px"
                                                 className="rounded-lg object-cover"
                                             />
                                         ) : (

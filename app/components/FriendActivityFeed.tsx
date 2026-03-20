@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Music, Play, User } from "lucide-react";
+import { Music, Play, User, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -21,6 +21,7 @@ interface FriendActivity {
 export function FriendActivityFeed() {
     const [activity, setActivity] = useState<FriendActivity[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const fetchActivity = async () => {
         try {
@@ -51,13 +52,21 @@ export function FriendActivityFeed() {
 
     return (
         <div className="space-y-4">
-            <h3 className="text-sm font-bold flex items-center justify-between text-gray-400 uppercase tracking-widest">
+            <button 
+                className="w-full flex items-center justify-between text-sm font-bold text-gray-400 uppercase tracking-widest md:cursor-default"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
                 Friend Activity
-                <span className="text-[10px] font-black bg-white/5 px-2 py-0.5 rounded-full">
-                    {activity.filter(a => a.isListening).length} ONLINE
-                </span>
-            </h3>
-            <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black bg-white/5 px-2 py-0.5 rounded-full">
+                        {activity.filter(a => a.isListening).length} ONLINE
+                    </span>
+                    <div className="md:hidden">
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                </div>
+            </button>
+            <div className={`${isExpanded ? "block" : "hidden"} md:block space-y-3`}>
                 {activity.map((friend) => (
                     <div key={friend.id}>
                         {friend.isListening ? (

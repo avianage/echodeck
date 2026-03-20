@@ -65,6 +65,9 @@
   body {
     @apply bg-background text-foreground;
   }
+  button, a {
+    touch-action: manipulation;
+  }
 }
 
 @layer utilities {

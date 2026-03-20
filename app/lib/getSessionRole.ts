@@ -22,8 +22,12 @@ export async function getStreamRole(
     
     const user = await prismaClient.user.findUnique({
         where: { id: userId },
-        select: { platformRole: true }
+        select: { platformRole: true, isBanned: true, bannedUntil: true }
     });
+
+    if (user?.isBanned || (user?.bannedUntil && new Date(user.bannedUntil) > new Date())) {
+        return "BANNED";
+    }
 
     if ((user?.platformRole as any) === "OWNER") return "OWNER";
     if (userId === creatorId) return "CREATOR";
@@ -32,13 +36,22 @@ export async function getStreamRole(
         where: { userId_creatorId: { userId, creatorId } }
     });
 
-    // Check stream-scoped ban
-    if (member?.isBanned) {
-        const isPermanent = !member.bannedUntil;
-        const isActive = member.bannedUntil
-            ? new Date(member.bannedUntil) > new Date()
-            : false;
-        if (isPermanent || isActive) return "GUEST"; // effectively blocked from this stream
+    // Check stream-scoped restriction
+    if (member) {
+        const isPermanent = member.isBanned;
+        const now = Date.now();
+        const bannedUntilTime = member.bannedUntil ? new Date(member.bannedUntil).getTime() : 0;
+        const isTimedOut = bannedUntilTime > now;
+        
+        console.log(`🔍 [getStreamRole] User: ${userId}, Creator: ${creatorId}`);
+        console.log(`🔍 [getStreamRole] member.isBanned: ${isPermanent}, member.bannedUntil: ${member.bannedUntil}, now: ${new Date(now).toISOString()}, isTimedOut: ${isTimedOut}`);
+        
+        if (isPermanent || isTimedOut) {
+            console.log(`🚫 [getStreamRole] REJECTING user ${userId} (Role: BANNED)`);
+            return "BANNED";
+        }
+    } else {
+        console.log(`🔍 [getStreamRole] No special member record for user ${userId} on creator ${creatorId}`);
     }
 
     return (member?.role as StreamRole) ?? "MEMBER";

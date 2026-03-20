@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { prismaClient } from "@/app/lib/db";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -12,14 +14,21 @@ export async function GET(req: NextRequest) {
     const user = await prismaClient.user.findUnique({ where: { email: session.user.email } });
     if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 });
 
+    const creatorId = req.nextUrl.searchParams.get("creatorId") || user.id;
+    const role = await getStreamRole(user.id, creatorId);
+
+    if (!hasPermission(role as any, "access:manage")) {
+        return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+    }
+
     const requests = await prismaClient.streamAccess.findMany({
         where: {
-            streamerId: user.id,
+            streamerId: creatorId,
             status: "PENDING"
         },
         include: {
             viewer: {
-                select: { id: true, email: true }
+                select: { id: true, username: true }
             }
         }
     });
@@ -57,11 +66,15 @@ export async function POST(req: NextRequest) {
         }
 
         if (action === "approve" || action === "reject") {
-            // Only the streamer can approve/reject
+            const role = await getStreamRole(user.id, streamerId);
+            if (!hasPermission(role as any, "access:manage")) {
+                 return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
+            }
+
             await prismaClient.streamAccess.update({
                 where: {
                     streamerId_viewerId: {
-                        streamerId: user.id,
+                        streamerId,
                         viewerId
                     }
                 },

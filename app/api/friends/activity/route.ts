@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const ACTIVITY_TIMEOUT_MS = 30 * 1000; // 30s — if no heartbeat, consider offline
     const now = Date.now();
 
-    const activity = await Promise.all(friendships.map(async (f) => {
+    const activity = await Promise.all(friendships.map(async (f: any) => {
         const friend = f.requesterId === userId ? f.addressee : f.requester;
         const la = friend.listeningActivity;
         const isActive = la && (now - new Date(la.updatedAt).getTime()) < ACTIVITY_TIMEOUT_MS;

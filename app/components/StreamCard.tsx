@@ -17,7 +17,7 @@ export function StreamCard({ stream, isGuest, onJoinClick }: StreamCardProps) {
     return (
         <div className="group relative bg-[#111] border border-white/5 rounded-[2rem] overflow-hidden transition-all hover:bg-[#151515] hover:border-white/10 hover:shadow-2xl hover:shadow-blue-900/10">
             {/* Top Area: Player Preview / Lock */}
-            <div className="relative aspect-video w-full overflow-hidden bg-[#0a0a0a]">
+            <div className="relative w-full aspect-video rounded-t-[2rem] overflow-hidden bg-[#0a0a0a]">
                 <img 
                     src={thumbnail} 
                     alt={stream.title}

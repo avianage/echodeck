@@ -58,6 +58,9 @@ ALTER TABLE "User" ALTER COLUMN "email" DROP NOT NULL;
 -- Make provider nullable (was originally NOT NULL)
 ALTER TABLE "User" ALTER COLUMN "provider" DROP NOT NULL;
 
+-- Backfill partyCode for existing users that don't have one yet
+UPDATE "User" SET "partyCode" = gen_random_uuid()::TEXT WHERE "partyCode" IS NULL;
+
 -- Unique indexes for new columns (safe: skip if already exists)
 CREATE UNIQUE INDEX IF NOT EXISTS "User_partyCode_key" ON "User"("partyCode");
 CREATE UNIQUE INDEX IF NOT EXISTS "User_username_key" ON "User"("username");

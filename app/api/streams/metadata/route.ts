@@ -2,7 +2,8 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionRole } from "@/app/lib/getSessionRole";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -19,8 +20,8 @@ export async function POST(req: NextRequest) {
             const stream = await prismaClient.stream.findUnique({ where: { id: streamId } });
             if (!stream) return NextResponse.json({ message: "Stream not found" }, { status: 404 });
 
-            const role = await getSessionRole(session);
-            if (role !== "OWNER" && stream.userId !== userId) {
+            const streamRole = await getStreamRole(userId, stream.userId);
+            if (!hasPermission(streamRole as any, "stream:update")) {
                 return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
             }
 

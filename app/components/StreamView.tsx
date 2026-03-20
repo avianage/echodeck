@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Share2, Play, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2 } from "lucide-react";
+import { Share2, Play, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2, ShieldAlert, Timer } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
@@ -21,6 +21,42 @@ import { QueueSection } from "./QueueSection";
 import { ActivityLog } from "./ActivityLog";
 import { PlaylistModal } from "./PlaylistModal";
 import { StreamManagement } from "./StreamManagement";
+
+function Countdown({ until }: { until: string }) {
+    const [timeLeft, setTimeLeft] = useState("");
+
+    useEffect(() => {
+        const calculate = () => {
+            const diff = new Date(until).getTime() - Date.now();
+            if (diff <= 0) {
+                window.location.reload();
+                return "Refreshing...";
+            }
+            
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const secs = Math.floor((diff % (1000 * 60)) / 1000);
+
+            let str = "";
+            if (days > 0) str += `${days}d `;
+            if (hours > 0 || days > 0) str += `${hours}h `;
+            str += `${mins}m ${secs}s`;
+            return str;
+        };
+
+        const timer = setInterval(() => setTimeLeft(calculate()), 1000);
+        setTimeLeft(calculate());
+        return () => clearInterval(timer);
+    }, [until]);
+
+    return (
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500 font-black text-[10px] uppercase tracking-widest mt-4 shadow-xl shadow-amber-500/5">
+            <Timer className="w-3.5 h-3.5 animate-pulse" />
+            Restriction expires in: {timeLeft}
+        </div>
+    );
+}
 
 interface Video {
     id: string,
@@ -73,9 +109,15 @@ export default function StreamView({
     const [activityLogs, setActivityLogs] = useState<{ type: "success" | "error", message: string, timestamp: number }[]>([]);
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [creator, setCreator] = useState<{ id: string, email: string, isPublic: boolean, partyCode?: string | null } | null>(null);
+    const [creator, setCreator] = useState<{ id: string, email?: string, isPublic: boolean, partyCode?: string | null } | null>(null);
     const [accessStatus, setAccessStatus] = useState<string | null>(null);
-    const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+    const [streamRole, setStreamRole] = useState<string>("MEMBER");
+    const [restriction, setRestriction] = useState<{
+        isBanned: boolean;
+        bannedUntil: string | null;
+        reason: string | null;
+        scope: "PLATFORM" | "STREAM";
+    } | null>(null);
     const [isFavorite, setIsFavorite] = useState(false);
     const [volume, setVolume] = useState(0.8);
     const [heartbeatFailCount, setHeartbeatFailCount] = useState(0);
@@ -147,12 +189,18 @@ export default function StreamView({
             setCurrentUserId(json.currentUserId);
             setCreator(json.creator);
             setAccessStatus(json.accessStatus);
+            setStreamRole(json.streamRole || "MEMBER");
+            setRestriction(json.restriction);
+
+            if (!json.activeStream?.stream && json.creator?.isPublic !== undefined) {
+                setStreamIsPublic(json.creator.isPublic);
+            }
 
             setCurrentVideo(video => {
                 if (!json.activeStream?.stream) {
                     return null;
                 }
-                setStreamIsPublic(json.activeStream.stream.isPublic);
+                setStreamIsPublic(json.creator.isPublic);
                 setViewerCount(json.activeStream.viewerCount);
                 if (video?.id === json.activeStream.stream.id) {
                     return video;
@@ -172,16 +220,6 @@ export default function StreamView({
                 })
                 .catch(() => { /* favorites fetch failed silently */ });
 
-            // If streamer, poll pending requests at most once every 30s
-            if (json.currentUserId === creatorId) {
-                const now = Date.now();
-                if (now - lastAccessPollRef.current > 30_000) {
-                    lastAccessPollRef.current = now;
-                    const reqsRes = await fetch("/api/streams/access");
-                    const reqsData = await reqsRes.json();
-                    setPendingRequests(reqsData.requests || []);
-                }
-            }
         } catch (error) {
             console.error("Error Fetching Stream: ", error)
         }
@@ -319,17 +357,6 @@ export default function StreamView({
                                 })
                             });
                         }
-
-                        // Poll pending requests every 5s so streamer sees requests quickly
-                        const now = Date.now();
-                        if (now - lastAccessPollRef.current > 5_000) {
-                            lastAccessPollRef.current = now;
-                            const reqsRes = await fetch("/api/streams/access");
-                            if (reqsRes.ok) {
-                                const reqsData = await reqsRes.json();
-                                setPendingRequests(reqsData.requests || []);
-                            }
-                        }
                     } else if (isJoined) {
                     // Listener pulls state from DB
                     const res = await fetch("/api/streams/heartbeat", {
@@ -337,14 +364,43 @@ export default function StreamView({
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ creatorId })
                     });
+
+                    if (!res.ok) {
+                        if (res.status === 403 && !isCreator) {
+                            console.log(`Access revoked (403). Updating status and refreshing...`);
+                            refreshStreams(); // Full refresh to pick up restriction details
+                            setPlaying(false);
+                            return;
+                        }
+                        if (res.status === 404 && !isCreator) {
+                            console.log(`Streamer explicitly went offline (404)`);
+                            toast.error("The streamer is offline.", { toastId: "offline-kick", autoClose: false });
+                            clearInterval(heartbeatInterval);
+                            setTimeout(() => window.location.reload(), 2000);
+                            return;
+                        }
+                        throw new Error(`Heartbeat failed: ${res.status}`);
+                    }
+
                     const data = await res.json();
 
                     if (data.currentTime !== undefined && reactPlayerRef.current) {
                         const myTime = reactPlayerRef.current.getCurrentTime();
                         const staleness = (Date.now() - new Date(data.updatedAt).getTime()) / 1000;
+
+                        // 5-second offline detection for abrupt disconnects
+                        if (staleness > 5 && !isCreator) {
+                            console.log(`Streamer went offline abruptly. Staleness: ${staleness}s`);
+                            toast.error("The streamer is offline.", { toastId: "offline-kick", autoClose: false });
+                            clearInterval(heartbeatInterval);
+                            setTimeout(() => window.location.reload(), 2000);
+                            return;
+                        }
+
                         const compensatedTime = data.isPaused 
                             ? data.currentTime 
                             : data.currentTime + staleness;
+
 
                         // Force seek if listener is > 2s off (including staleness)
                         if (Math.abs(myTime - compensatedTime) > 2) {
@@ -368,6 +424,14 @@ export default function StreamView({
                             setViewerCount(data.actualViewerCount);
                         }
 
+                        // If stream privacy changed to private, hard refresh for listeners to force them to the access gate
+                        if (data.isPublic === false && streamIsPublic === true && !isCreator) {
+                            console.log("🔒 Stream became private, refreshing page...");
+                            window.location.reload();
+                            return; // Stop processing this heartbeat
+                        }
+                        setStreamIsPublic(data.isPublic);
+
                         // Process events
                         if (data.events && data.events.length > 0) {
                             data.events.forEach((event: StreamEvent) => {
@@ -386,8 +450,14 @@ export default function StreamView({
                                     case "SONG_SKIPPED_BY_CREATOR":
                                     case "SONG_REMOVED_BY_MOD":
                                     case "MOD_PROMOTED":
-                                    case "MOD_DEMOTED":
                                         toast.info(event.message, { autoClose: 3000, toastId: event.id });
+                                        break;
+                                    case "MOD_DEMOTED":
+                                        // event.message contains the targetUserId
+                                        if (event.message === currentUserId) {
+                                            console.log("⚠️ You have been demoted. Refreshing...");
+                                            window.location.reload();
+                                        }
                                         break;
                                 }
                             });
@@ -841,22 +911,6 @@ export default function StreamView({
         }
     };
 
-    const handleApprove = async (viewerId: string, approve: boolean) => {
-        try {
-            const res = await fetch("/api/streams/access", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ viewerId, action: approve ? "approve" : "reject" })
-            });
-            if (res.ok) {
-                toast.success(`Request ${approve ? "approved" : "rejected"}`);
-                refreshStreams();
-            }
-        } catch (err) {
-            toast.error("Failed to process request");
-        }
-    };
-
     const handleToggleFavorite = async () => {
         try {
             const res = await fetch("/api/user/favorites", {
@@ -882,27 +936,29 @@ export default function StreamView({
     };
 
     const handleToggleStreamVisibility = async () => {
-        if (!currentVideo) {
-            toast.info("Start a stream to change visibility");
-            return;
-        }
         const newState = !streamIsPublic;
         setStreamIsPublic(newState);
         try {
-            const [res1, res2] = await Promise.all([
-                fetch(`/api/streams/${currentVideo.id}/visibility`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ isPublic: newState })
-                }),
+            const updaters = [
                 fetch("/api/user/privacy", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ isPublic: newState })
                 })
-            ]);
-            
-            if (res1.ok && res2.ok) {
+            ];
+
+            if (currentVideo) {
+                updaters.push(
+                    fetch(`/api/streams/${currentVideo.id}/visibility`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ isPublic: newState })
+                    })
+                );
+            }
+
+            const results = await Promise.all(updaters);
+            if (results.every(res => res.ok)) {
                 toast.success(`Stream is now ${newState ? "Public" : "Private"}`);
             } else {
                 throw new Error();
@@ -940,9 +996,40 @@ export default function StreamView({
     };
 
     return (
-        <div className="flex min-h-screen flex-col bg-gray-950 px-4 md:px-20 pt-6 pb-safe text-white overflow-x-hidden">
+        <div className="flex min-h-screen flex-col bg-gray-950 px-3 sm:px-6 md:px-12 lg:px-20 pt-4 md:pt-6 pb-safe text-white overflow-x-hidden">
 
-            {!pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
+            {accessStatus === "BANNED" || !!restriction ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 bg-red-900/20 backdrop-blur-md border border-red-500/20 my-8 mx-4 md:mx-0 rounded-[2rem] animate-in fade-in zoom-in duration-500 min-h-[60vh]">
+                    <div className="p-6 bg-red-500/10 rounded-full border border-red-500/20 mb-6 shadow-2xl shadow-red-500/10">
+                        <ShieldAlert className="w-16 h-16 text-red-500" />
+                    </div>
+                    <h3 className="text-4xl font-black text-white mb-2 uppercase tracking-tighter italic">Join Restricted</h3>
+                    <p className="text-gray-400 mb-2 max-w-sm text-center px-4 font-black uppercase text-[10px] tracking-widest leading-relaxed">
+                        {restriction?.scope === "PLATFORM" ? "Your account has a platform-wide restriction." : "You have been timed out or banned from this stream."}
+                    </p>
+                    {restriction?.reason && (
+                        <p className="text-red-400/60 mb-8 max-w-sm text-center px-4 font-medium italic text-xs">
+                            "{restriction.reason}"
+                        </p>
+                    )}
+                    
+                    {restriction?.bannedUntil && (
+                        <div className="flex flex-col items-center mb-8">
+                            <Countdown until={restriction.bannedUntil} />
+                            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                                Access restored at {new Date(restriction.bannedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(restriction.bannedUntil).toLocaleDateString()})
+                            </p>
+                        </div>
+                    )}
+
+                    <Button
+                        onClick={() => router.push("/discover")}
+                        className="bg-white/5 hover:bg-white/10 text-white border border-white/10 font-black uppercase tracking-widest px-8 py-3 h-14 rounded-2xl transition-all shadow-xl"
+                    >
+                        Explore Other Streams
+                    </Button>
+                </div>
+            ) : !pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
                 <div className="flex-1 flex flex-col items-center justify-center py-20 bg-black/40 backdrop-blur-md rounded-xl border border-gray-800 my-8">
                     <Lock className="w-16 h-16 text-yellow-500 mb-6 animate-bounce" />
                     <h3 className="text-2xl font-bold text-white mb-2">Private Stream</h3>
@@ -964,22 +1051,23 @@ export default function StreamView({
                     )}
                 </div>
             ) : (
+
                 <div className="max-w-7xl mx-auto w-full">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-20">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 pb-16 md:pb-20">
                         <div className="lg:col-span-2 space-y-6">
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-3xl font-bold text-white">Now Playing</h2>
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5 shadow-lg">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
+                                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Now Playing</h2>
+                                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5 shadow-lg w-full sm:w-auto justify-center">
                                         <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                                         <span className="text-xs font-black tracking-widest uppercase text-gray-300"> {viewerCount} Viewers </span>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 w-full sm:w-auto">
                                         {currentUserId === creatorId && currentVideo && (
                                             <Button
                                                 onClick={handleToggleStreamVisibility}
                                                 variant="outline"
-                                                className={`h-11 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-3 ${streamIsPublic ? "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20" : "bg-accent/10 text-accent border-accent/20 hover:bg-accent/20"}`}
+                                                className={`h-11 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 flex flex-1 sm:flex-none items-center justify-center gap-3 ${streamIsPublic ? "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20" : "bg-accent/10 text-accent border-accent/20 hover:bg-accent/20"}`}
                                             >
                                                 {streamIsPublic ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                                                 {streamIsPublic ? "Public" : "Private"}
@@ -989,7 +1077,7 @@ export default function StreamView({
                                             <Button
                                                 onClick={handleToggleFavorite}
                                                 variant="outline"
-                                                className={`border-gray-800 font-bold px-4 py-2 rounded-xl transition-all shadow-lg active:scale-95 ${isFavorite ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30" : "bg-gray-900/50 text-gray-400 hover:text-white"}`}
+                                                className={`border-gray-800 font-bold px-4 py-2 w-full sm:w-auto rounded-xl transition-all shadow-lg active:scale-95 ${isFavorite ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30" : "bg-gray-900/50 text-gray-400 hover:text-white"}`}
                                             >
                                                 <Star className={`w-4 h-4 mr-2 ${isFavorite ? "fill-yellow-500" : ""}`} /> 
                                                 {isFavorite ? "Favorited" : "Favorite"}
@@ -997,7 +1085,7 @@ export default function StreamView({
                                         )}
                                         <Button
                                             onClick={handleShare}
-                                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                                            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
                                         >
                                             <Share2 className="w-4 h-4 mr-2" /> Share
                                         </Button>
@@ -1005,111 +1093,133 @@ export default function StreamView({
                                 </div>
                             </div>
 
-                            <Card className="bg-gray-900/50 border-gray-800 overflow-hidden backdrop-blur-sm shadow-2xl">
-                                <CardContent className="p-0 relative">
-                                    <PlayerSection
-                                        currentVideo={currentVideo}
-                                        playVideo={playVideo}
-                                        playing={playing}
-                                        isMuted={isMuted}
-                                        isPaused={isPaused}
-                                        isJoined={isJoined}
-                                        isPlayerReady={isPlayerReady}
-                                        resolvedUrl={resolvedUrl}
-                                        pathname={pathname}
-                                        creatorId={creatorId}
-                                        currentUserId={currentUserId}
-                                        accessStatus={accessStatus}
-                                        pendingRequests={pendingRequests}
-                                        volume={volume}
-                                        reactPlayerRef={reactPlayerRef}
-                                        onReady={() => {
-                                            console.log('✅ ReactPlayer Ready');
-                                            setIsPlayerReady(true);
-                                        }}
-                                        onPlay={() => {
-                                            const isCreator = !pathname.startsWith("/party/");
-                                            if (!isJoined && !isCreator) return;
-                                            setIsPaused(false);
-                                            setPlaying(true);
-                                            if (isCreator && reactPlayerRef.current) {
-                                                const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
-                                                fetch("/api/streams/sync", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({ creatorId, type: "play", currentTime })
-                                                });
-                                            }
-                                        }}
-                                        onPause={() => {
-                                            const isCreator = !pathname.startsWith("/party/");
-                                            if (!isJoined && !isCreator) return;
-                                            setIsPaused(true);
-                                            setPlaying(false);
-                                            if (isCreator && reactPlayerRef.current) {
-                                                const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
-                                                fetch("/api/streams/sync", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({ creatorId, type: "pause", currentTime })
-                                                });
-                                            }
-                                        }}
-                                        onEnded={() => {
-                                            console.log('Video ended, playing next');
-                                            playNext();
-                                        }}
-                                        onError={(err) => {
-                                            if (!currentVideo) return;
-                                            console.warn('⚠️ ReactPlayer error:', err, 'for ID:', currentVideo.extractedId);
-                                            
-                                            const isEmbedRestricted = err === 101 || err === 150;
-                                            const isInvalidVideo = err === 2 || err === 100;
+                            <Card className="bg-gray-900/50 border-gray-800 overflow-hidden backdrop-blur-sm shadow-2xl min-h-[400px] flex flex-col justify-center">
+                                <CardContent className="p-0 relative flex-1 flex flex-col">
+                                    {!pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black/60 backdrop-blur-sm">
 
-                                            if (isInvalidVideo) {
-                                                toast.error("Video unavailable. Skipping...");
-                                                playNext();
-                                                return;
-                                            }
-
-                                            if (isEmbedRestricted) {
-                                                if (!resolvedUrl) {
-                                                    toast.info("Embed restricted. Resolving stream...");
-                                                    resolveStream(currentVideo.extractedId);
-                                                } else {
-                                                    console.log("🔄 Restriction persists on resolved URL, skipping.");
-                                                    toast.error("Playback failed. Skipping...");
-                                                    playNext();
+                                            <Lock className="w-16 h-16 text-yellow-500 mb-6 animate-bounce" />
+                                            <h3 className="text-2xl font-bold text-white mb-2">Private Stream</h3>
+                                            <p className="text-gray-400 mb-8 max-w-sm text-center px-4">
+                                                This stream is private. You need the streamer&apos;s approval to join and listen.
+                                            </p>
+                                            {accessStatus === "PENDING" ? (
+                                                <div className="px-6 py-3 bg-yellow-500/10 border border-yellow-500/30 rounded-full text-yellow-500 font-bold flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                                                    WAITING FOR APPROVAL
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    onClick={handleRequestAccess}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95 transition-all text-lg"
+                                                >
+                                                    Request Access
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <PlayerSection
+                                            currentVideo={currentVideo}
+                                            playVideo={playVideo}
+                                            playing={playing}
+                                            isMuted={isMuted}
+                                            isPaused={isPaused}
+                                            isJoined={isJoined}
+                                            isPlayerReady={isPlayerReady}
+                                            resolvedUrl={resolvedUrl}
+                                            pathname={pathname}
+                                            creatorId={creatorId}
+                                            currentUserId={currentUserId}
+                                            accessStatus={accessStatus}
+                                            volume={volume}
+                                            reactPlayerRef={reactPlayerRef}
+                                            onReady={() => {
+                                                console.log('✅ ReactPlayer Ready');
+                                                setIsPlayerReady(true);
+                                            }}
+                                            onPlay={() => {
+                                                const isCreator = !pathname.startsWith("/party/");
+                                                if (!isJoined && !isCreator) return;
+                                                setIsPaused(false);
+                                                setPlaying(true);
+                                                if (isCreator && reactPlayerRef.current) {
+                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                    fetch("/api/streams/sync", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ creatorId, type: "play", currentTime })
+                                                    });
                                                 }
-                                                return;
-                                            }
+                                            }}
+                                            onPause={() => {
+                                                const isCreator = !pathname.startsWith("/party/");
+                                                if (!isJoined && !isCreator) return;
+                                                setIsPaused(true);
+                                                setPlaying(false);
+                                                if (isCreator && reactPlayerRef.current) {
+                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                    fetch("/api/streams/sync", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ creatorId, type: "pause", currentTime })
+                                                    });
+                                                }
+                                            }}
+                                            onEnded={() => {
+                                                console.log('Video ended, playing next');
+                                                playNext();
+                                            }}
+                                            onError={(err) => {
+                                                if (!currentVideo) return;
+                                                console.warn('⚠️ ReactPlayer error:', err, 'for ID:', currentVideo.extractedId);
+                                                
+                                                const isEmbedRestricted = err === 101 || err === 150;
+                                                const isInvalidVideo = err === 2 || err === 100;
 
-                                            console.error("Unknown player error:", err);
-                                            toast.error("Playback error. Skipping...");
-                                            playNext();
-                                        }}
-                                        onGoLive={handleGoLive}
-                                        onApprove={handleApprove}
-                                        onMuteToggle={() => setIsMuted(!isMuted)}
-                                        onVolumeChange={(v) => {
-                                            setVolume(v);
-                                            if (v > 0) setIsMuted(false);
-                                        }}
-                                        onPlayClick={() => {
-                                            if (!pathname.startsWith("/party/")) setPlaying(true);
-                                        }}
-                                        onRequestAccess={handleRequestAccess}
-                                        isResolving={isResolving}
-                                    />
+                                                if (isInvalidVideo) {
+                                                    toast.error("Video unavailable. Skipping...");
+                                                    playNext();
+                                                    return;
+                                                }
+
+                                                if (isEmbedRestricted) {
+                                                    if (!resolvedUrl) {
+                                                        toast.info("Embed restricted. Resolving stream...");
+                                                        resolveStream(currentVideo.extractedId);
+                                                    } else {
+                                                        console.log("🔄 Restriction persists on resolved URL, skipping.");
+                                                        toast.error("Playback failed. Skipping...");
+                                                        playNext();
+                                                    }
+                                                    return;
+                                                }
+
+                                                console.error("Unknown player error:", err);
+                                                toast.error("Playback error. Skipping...");
+                                                playNext();
+                                            }}
+                                            onGoLive={handleGoLive}
+                                            onMuteToggle={() => setIsMuted(!isMuted)}
+                                            onVolumeChange={(v) => {
+                                                setVolume(v);
+                                                if (v > 0) setIsMuted(false);
+                                            }}
+                                            onPlayClick={() => {
+                                                if (!pathname.startsWith("/party/")) setPlaying(true);
+                                            }}
+                                            onRequestAccess={handleRequestAccess}
+                                            isResolving={isResolving}
+                                        />
+                                    )}
                                 </CardContent>
                             </Card>
 
                             {!pathname.startsWith("/party/") && (
-                                <div className="flex gap-4">
+                                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                                     <Button
                                         disabled={playNextLoader}
                                         onClick={playNext}
-                                        className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
+                                        className="w-full sm:flex-1 h-11 sm:h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                                     >
                                         <Play className="mr-2 h-5 w-5 fill-current" />
                                         {playNextLoader ? "Loading..." : "Play Next"}
@@ -1117,7 +1227,7 @@ export default function StreamView({
                                     <Button
                                         onClick={stopQueue}
                                         variant="destructive"
-                                        className="flex-1 h-12 font-bold rounded-xl"
+                                        className="w-full sm:flex-1 h-11 sm:h-12 font-bold rounded-xl"
                                     >
                                         Stop Queue
                                     </Button>
@@ -1181,57 +1291,63 @@ export default function StreamView({
                                 onRemove={handleRemove}
                             />
 
-                            {/* CREATOR MANAGEMENT PANEL */}
-                            {currentUserId === creatorId && (
-                                <div className="space-y-8 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-right-8 duration-700">
-                                    <div className="space-y-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-accent/10 rounded-xl border border-accent/20">
-                                                <Settings className="w-5 h-5 text-accent" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-xl font-black tracking-tighter uppercase italic">Session Settings</h3>
-                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Branding & Metadata</p>
-                                            </div>
-                                        </div>
-
-                                        <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden shadow-2xl">
-                                            <CardContent className="p-6 space-y-4">
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Stream Title</label>
-                                                    <Input 
-                                                        value={streamTitle}
-                                                        onChange={(e) => setStreamTitle(e.target.value)}
-                                                        placeholder="Enter a catchy title..."
-                                                        className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Genre (Optional)</label>
-                                                    <Input 
-                                                        value={streamGenre}
-                                                        onChange={(e) => setStreamGenre(e.target.value)}
-                                                        placeholder="e.g. Chill, Lofi, Gaming"
-                                                        className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
-                                                    />
-                                                </div>
-                                                <Button 
-                                                    onClick={handleSaveMetadata}
-                                                    disabled={isSavingMetadata || !currentVideo}
-                                                    className="w-full h-12 rounded-2xl bg-accent hover:bg-accent/90 text-white font-black uppercase tracking-widest gap-2 shadow-lg shadow-accent/20"
-                                                >
-                                                    {isSavingMetadata ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                                    Update Settings
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-
-                                    <StreamManagement creatorId={creatorId} />
-                                </div>
-                            )}
                         </div>
                     </div>
+
+                    {/* MANAGEMENT PANEL — visible to creator, mods, and owner */}
+                    {(currentUserId === creatorId || streamRole === "MODERATOR" || streamRole === "OWNER") && (
+                        <div className="pb-20 border-t border-white/5 pt-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <div className={`grid grid-cols-1 ${(currentUserId === creatorId || streamRole === "OWNER") ? "lg:grid-cols-2" : ""} gap-8 items-start`}>
+                                {/* ── Session Settings ──────────────────── */}
+                                {(currentUserId === creatorId || streamRole === "OWNER") && (
+                                    <div className="space-y-5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-accent/10 rounded-xl border border-accent/20">
+                                            <Settings className="w-5 h-5 text-accent" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-black tracking-tighter uppercase italic">Session Settings</h3>
+                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Branding &amp; Metadata</p>
+                                        </div>
+                                    </div>
+                                    <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+                                        <CardContent className="p-6 space-y-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Stream Title</label>
+                                                <Input
+                                                    value={streamTitle}
+                                                    onChange={(e) => setStreamTitle(e.target.value)}
+                                                    placeholder="Enter a catchy title..."
+                                                    className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Genre (Optional)</label>
+                                                <Input
+                                                    value={streamGenre}
+                                                    onChange={(e) => setStreamGenre(e.target.value)}
+                                                    placeholder="e.g. Chill, Lofi, Gaming"
+                                                    className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
+                                                />
+                                            </div>
+                                            <Button
+                                                onClick={handleSaveMetadata}
+                                                disabled={isSavingMetadata || !currentVideo}
+                                                className="w-full h-12 rounded-2xl bg-accent hover:bg-accent/90 text-white font-black uppercase tracking-widest gap-2 shadow-lg shadow-accent/20"
+                                            >
+                                                {isSavingMetadata ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                Update Settings
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                    </div>
+                                )}
+
+                                {/* ── Live Viewers ──────────────────────── */}
+                                <StreamManagement creatorId={creatorId} userRole={streamRole} currentUserId={currentUserId || undefined} />
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

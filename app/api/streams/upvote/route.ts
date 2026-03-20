@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
+import { getStreamRole } from "@/app/lib/getSessionRole";
+import { hasPermission } from "@/app/lib/permissions";
 
 const UpvoteSchema = z.object({
     streamId: z.string()
@@ -16,34 +18,39 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Unauthenticated" }, { status: 403 });
         }
 
-        const user = await prismaClient.user.findUnique({
-            where: {
-                email: session.user.email,
-            },
-            select: { id: true, isBanned: true, bannedUntil: true }
-        });
+        const data = UpvoteSchema.parse(await req.json());
 
-        if (user?.isBanned) {
-            return NextResponse.json({ message: "Account banned" }, { status: 403 });
-        }
-
-        if (user?.bannedUntil && new Date(user.bannedUntil) > new Date()) {
-            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
-        }
+        const [user, stream] = await Promise.all([
+            prismaClient.user.findUnique({
+                where: {
+                    email: session.user.email,
+                },
+                select: { id: true, isBanned: true, bannedUntil: true, platformRole: true }
+            }),
+            prismaClient.stream.findUnique({
+                where: { id: data.streamId },
+            })
+        ]);
 
         if (!user) {
             return NextResponse.json({ message: "User not found" }, { status: 403 });
         }
 
-        const data = UpvoteSchema.parse(await req.json());
+        if (user.isBanned) {
+            return NextResponse.json({ message: "Account banned" }, { status: 403 });
+        }
 
-        // Validate streamId before inserting upvote 
-        const stream = await prismaClient.stream.findUnique({
-            where: { id: data.streamId },
-        });
+        if (user.bannedUntil && new Date(user.bannedUntil) > new Date()) {
+            return NextResponse.json({ message: "Account temporarily restricted" }, { status: 403 });
+        }
 
         if (!stream) {
             return NextResponse.json({ message: "Invalid stream ID" }, { status: 404 });
+        }
+
+        const role = await getStreamRole(user.id, stream.userId);
+        if (!hasPermission(role, "vote:cast")) {
+            return NextResponse.json({ message: "Action restricted from this stream" }, { status: 403 });
         }
 
         const creator = await prismaClient.user.findUnique({

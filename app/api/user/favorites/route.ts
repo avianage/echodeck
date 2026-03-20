@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
             favorites: {
                 include: {
                     favorite: {
-                        select: { id: true, email: true, username: true, partyCode: true, image: true } as any
+                        select: { id: true, username: true, email: true, partyCode: true, image: true } as any
                     }
                 }
             }

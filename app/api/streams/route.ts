@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prismaClient } from "@/app/lib/db";
-// @ts-expect-error No Types available
+// @ts-ignore
 import youtubesearchapi from "youtube-search-api";
 import { YT_REGEX, SPOTIFY_TRACK_REGEX } from "@/app/lib/utils";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
-// @ts-expect-error No Types available
-import spotifyUrlInfo from "spotify-url-info";
+import * as _spotifyUrlInfo from "spotify-url-info";
+const spotifyUrlInfo = (_spotifyUrlInfo as any).default || _spotifyUrlInfo;
 
 import { isRateLimited } from "@/app/lib/rateLimit";
 import { getStreamRole, isOwner } from "@/app/lib/getSessionRole";
@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
                 title,
                 smallImg,
                 bigImg,
-                isPublic: data.isPublic ?? false
+                isPublic: data.isPublic ?? creator.isPublic
             }
         });
 
@@ -319,11 +319,25 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        const user = await prismaClient.user.findFirst({
-            where: {
-                email: session.user.email
-            }
-        });
+        if (!creatorId) {
+            return NextResponse.json({
+                message: "Error: No creatorId provided"
+            }, {
+                status: 411
+            })
+        }
+
+        const [user, creator] = await Promise.all([
+            prismaClient.user.findFirst({
+                where: {
+                    email: session.user.email
+                }
+            }),
+            prismaClient.user.findUnique({
+                where: { id: creatorId },
+                select: { id: true, isPublic: true, partyCode: true }
+            })
+        ]);
 
         if (!user) {
             return NextResponse.json({
@@ -333,26 +347,24 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        if (!creatorId) {
-            return NextResponse.json({
-                message: "Error: No creatorId provided"
-            }, {
-                status: 411
-            })
+        if (!creator) {
+            return NextResponse.json({ message: "Creator not found" }, { status: 404 });
         }
-
-        const creator = await prismaClient.user.findUnique({
-            where: { id: creatorId },
-            select: { id: true, email: true, isPublic: true, partyCode: true }
-        });
 
         if (!creator) {
             return NextResponse.json({ message: "Creator not found" }, { status: 404 });
         }
 
-        // Check access if private
+        // Use Stream Roles to check access
+        const streamRole = await getStreamRole(user.id, creatorId);
+
         let accessStatus: string | null = "APPROVED";
-        if (!(creator as any).isPublic && user.id !== (creator as any).id) {
+
+        if (streamRole === "BANNED") {
+            accessStatus = "BANNED";
+        } else {
+            const canBypass = ["CREATOR", "MODERATOR", "OWNER"].includes(streamRole);
+            if (!(creator as any).isPublic && !canBypass) {
             const resetAccess = req.nextUrl.searchParams.get("resetAccess") === "true";
             
             if (resetAccess) {
@@ -384,6 +396,7 @@ export async function GET(req: NextRequest) {
                 accessStatus = access?.status || null;
             }
         }
+    }
 
         const [streams, activeStream] = await Promise.all([
             prismaClient.stream.findMany({
@@ -424,6 +437,19 @@ export async function GET(req: NextRequest) {
             })
         ]);
 
+        const member = await prismaClient.sessionMember.findUnique({
+            where: { userId_creatorId: { userId: user.id, creatorId: creator.id } },
+            select: { isBanned: true, bannedUntil: true, banReason: true }
+        });
+
+        const restriction = (user.isBanned || (user.bannedUntil && new Date(user.bannedUntil) > new Date()))
+            ? { isBanned: user.isBanned, bannedUntil: user.bannedUntil, reason: user.banReason, scope: "PLATFORM" }
+            : (member && (member.isBanned || (member.bannedUntil && new Date(member.bannedUntil) > new Date())))
+            ? { isBanned: member.isBanned, bannedUntil: member.bannedUntil, reason: member.banReason, scope: "STREAM" }
+            : null;
+
+        console.log(`🔍 [GET /api/streams] User: ${user.id}, Creator: ${creatorId}, Role: ${streamRole}, Access: ${accessStatus}, Restriction: ${JSON.stringify(restriction)}`);
+
         return NextResponse.json({
             streams: streams.map(({ _count, ...rest }: any) => ({
                 ...rest,
@@ -434,10 +460,12 @@ export async function GET(req: NextRequest) {
             currentUserId: user.id,
             creator: {
                 id: creator.id,
-                email: creator.email,
-                isPublic: creator.isPublic
+                isPublic: creator.isPublic,
+                partyCode: creator.partyCode
             },
-            accessStatus
+            accessStatus,
+            streamRole,
+            restriction
         });
     } catch (e: unknown) {
         console.error("❌ GET /api/streams failed:", e);
