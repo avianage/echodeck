@@ -148,7 +148,7 @@ export const authOptions: NextAuthOptions = {
 
                 if (!linkedAccount) {
                     const normalizedEmail = user.email.toLowerCase();
-                    
+
                     // Check if this linking has been verified via email
                     const pendingLink = await prismaClient.verificationToken.findFirst({
                         where: { identifier: `pending-link:${account.provider}:${normalizedEmail}` }
@@ -158,7 +158,7 @@ export const authOptions: NextAuthOptions = {
 
                     if (pendingLink) {
                         console.log(`✅ [Auth] Linking verified for ${normalizedEmail}. Allowing NextAuth to link.`);
-                        
+
                         await prismaClient.verificationToken.deleteMany({
                             where: { identifier: `pending-link:${account.provider}:${normalizedEmail}` }
                         });
@@ -173,8 +173,42 @@ export const authOptions: NextAuthOptions = {
             return true;
         },
         async redirect({ url, baseUrl }) {
-            if (url.startsWith(baseUrl)) return url;
-            return baseUrl;
+            const publicBase = process.env.NEXTAUTH_URL ?? baseUrl;
+
+            // Strip internal Docker container URLs from callbackUrl param
+            const sanitizeUrl = (u: string) => {
+                try {
+                    const parsed = new URL(u);
+                    // If it's an internal container hostname (no dots, has port, or matches docker hash pattern)
+                    const isInternal =
+                        parsed.port === '3002' ||
+                        !parsed.hostname.includes('.') ||
+                        /^[a-f0-9]+$/.test(parsed.hostname);
+                    if (isInternal) return publicBase;
+                } catch {
+                    // relative URL — safe
+                }
+                return u;
+            };
+
+            // Handle callbackUrl param inside the url
+            if (url.includes('callbackUrl=')) {
+                const urlObj = new URL(url.startsWith('http') ? url : `${publicBase}${url}`);
+                const callbackUrl = urlObj.searchParams.get('callbackUrl');
+                if (callbackUrl) {
+                    const sanitized = sanitizeUrl(decodeURIComponent(callbackUrl));
+                    urlObj.searchParams.set('callbackUrl', sanitized);
+                    // Also fix the base of the URL itself
+                    const fixedBase = new URL(urlObj.pathname + urlObj.search, publicBase);
+                    return fixedBase.toString();
+                }
+            }
+
+            if (url.startsWith('/')) return `${publicBase}${url}`;
+            if (url.startsWith(publicBase)) return url;
+
+            // Sanitize the url itself if it's an internal address
+            return sanitizeUrl(url);
         }
     },
     pages: {
