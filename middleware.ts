@@ -62,10 +62,35 @@ async function getMaintenanceStatus(): Promise<{
     }
 }
 
-export default async function proxy(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
-    // --- MAINTENANCE MODE CHECK (runs before everything else) ---
+    // --- CORS HANDLING ---
+    const origin = req.headers.get('origin');
+    const allowedOrigins = ['https://echodeck.avianage.in', 'http://localhost:3000', 'http://localhost:3002'];
+    const responseOrigin = origin && allowedOrigins.includes(origin) ? origin : 'https://echodeck.avianage.in';
+
+    // Handle Preflight
+    if (req.method === 'OPTIONS') {
+        return new NextResponse(null, {
+            status: 204,
+            headers: {
+                'Access-Control-Allow-Origin': responseOrigin,
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                'Access-Control-Max-Age': '86400',
+            },
+        });
+    }
+
+    const applyCors = (res: NextResponse) => {
+        res.headers.set('Access-Control-Allow-Origin', responseOrigin);
+        res.headers.set('Access-Control-Allow-Credentials', 'true');
+        return res;
+    };
+    // --- END CORS ---
+
+    // --- MAINTENANCE MODE CHECK ---
     const isExempt = MAINTENANCE_EXEMPT_PATHS.some(p => pathname.startsWith(p));
 
     if (!isExempt) {
@@ -75,21 +100,17 @@ export default async function proxy(req: NextRequest) {
             const token = await getToken({ req });
             const role = (token as any)?.platformRole;
 
-            // Owner bypasses maintenance entirely
             if (role !== "OWNER") {
-                // API routes during maintenance return 503
                 if (pathname.startsWith("/api/")) {
-                    return NextResponse.json(
+                    return applyCors(NextResponse.json(
                         { message: "Service under maintenance" },
                         { status: 503 }
-                    );
+                    ));
                 }
-                // All other routes redirect to maintenance page
                 return NextResponse.redirect(new URL("/maintenance", req.url));
             }
         }
     }
-    // --- END MAINTENANCE CHECK ---
 
     // Always allow public paths and static assets
     const isPublicPath = PUBLIC_PATHS.some(p => {
@@ -98,34 +119,31 @@ export default async function proxy(req: NextRequest) {
     });
 
     if (isPublicPath) {
-        return NextResponse.next();
+        return applyCors(NextResponse.next());
     }
 
     const token = await getToken({ req });
 
-    // Not logged in + trying to access /party/* → redirect to sign in with callbackUrl
     if (!token && pathname.startsWith("/party/")) {
         const signInUrl = new URL("/auth/signin", req.url);
         signInUrl.searchParams.set("callbackUrl", req.url);
-        return NextResponse.redirect(signInUrl);
+        return applyCors(NextResponse.redirect(signInUrl));
     }
 
-    // Logged in but no username set → force username setup page
     if (token && !(token as any).username && pathname !== "/auth/setup") {
         const setupUrl = new URL("/auth/setup", req.url);
         setupUrl.searchParams.set("callbackUrl", req.url);
-        return NextResponse.redirect(setupUrl);
+        return applyCors(NextResponse.redirect(setupUrl));
     }
 
-    // Role-based route protection: Only CREATOR and OWNER can access /stream
     if (token && pathname.startsWith("/stream")) {
         const role = (token as any).platformRole;
         if (role !== "CREATOR" && role !== "OWNER") {
-            return NextResponse.redirect(new URL("/dashboard", req.url));
+            return applyCors(NextResponse.redirect(new URL("/dashboard", req.url)));
         }
     }
 
-    return NextResponse.next();
+    return applyCors(NextResponse.next());
 }
 
 export const config = {

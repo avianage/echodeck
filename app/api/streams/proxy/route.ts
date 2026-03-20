@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
         headers: {
             'Content-Type': upstream.headers.get('Content-Type') || 'audio/mp4',
             'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
         }
     });
 }
