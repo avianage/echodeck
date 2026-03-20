@@ -1,5 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
+import { prismaClient } from "@/app/lib/db";
 
 const MAINTENANCE_EXEMPT_PATHS = [
     "/maintenance",
@@ -25,6 +26,42 @@ const PUBLIC_PATHS = [
     "/",
 ];
 
+async function getMaintenanceStatus(): Promise<{
+    active: boolean;
+    message?: string;
+    endsAt?: Date | null;
+}> {
+    try {
+        const maintenance = await prismaClient.maintenanceMode.findUnique({
+            where: { id: "singleton" }
+        });
+
+        if (!maintenance || !maintenance.isActive) {
+            return { active: false };
+        }
+
+        // Auto-expire if duration has passed
+        if (maintenance.endsAt && new Date(maintenance.endsAt) < new Date()) {
+            await prismaClient.maintenanceMode.update({
+                where: { id: "singleton" },
+                data: { isActive: false }
+            });
+            return { active: false };
+        }
+
+        return {
+            active: true,
+            message: maintenance.message ?? undefined,
+            endsAt: maintenance.endsAt
+        };
+    } catch (err) {
+        // If DB is unreachable for any reason, fail open —
+        // never block all traffic due to a maintenance check failure
+        console.error("Maintenance check failed:", err);
+        return { active: false };
+    }
+}
+
 export default async function proxy(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
@@ -32,60 +69,23 @@ export default async function proxy(req: NextRequest) {
     const isExempt = MAINTENANCE_EXEMPT_PATHS.some(p => pathname.startsWith(p));
 
     if (!isExempt) {
-        try {
-            // Try direct database check first (more robust than fetch in some Docker envs)
-            const { prismaClient } = require("./app/lib/db");
-            const maintenance = await prismaClient.maintenanceMode.findUnique({
-                where: { id: "singleton" }
-            });
+        const maintenance = await getMaintenanceStatus();
 
-            if (maintenance?.isActive) {
-                // Check if maintenance window has expired
-                const isExpired = maintenance.endsAt && new Date(maintenance.endsAt) < new Date();
-                
-                if (!isExpired) {
-                    const token = await getToken({ req });
-                    const role = (token as any)?.platformRole;
+        if (maintenance.active) {
+            const token = await getToken({ req });
+            const role = (token as any)?.platformRole;
 
-                    // Owner bypasses maintenance entirely
-                    if (role !== "OWNER") {
-                        // API routes during maintenance return 503
-                        if (pathname.startsWith("/api/")) {
-                            return NextResponse.json(
-                                { message: "Service under maintenance" },
-                                { status: 503 }
-                            );
-                        }
-                        // All other routes redirect to maintenance page
-                        return NextResponse.redirect(new URL("/maintenance", req.url));
-                    }
+            // Owner bypasses maintenance entirely
+            if (role !== "OWNER") {
+                // API routes during maintenance return 503
+                if (pathname.startsWith("/api/")) {
+                    return NextResponse.json(
+                        { message: "Service under maintenance" },
+                        { status: 503 }
+                    );
                 }
-            }
-        } catch (error) {
-            console.error("Maintenance check failed:", error);
-            // Fallback to fetch if direct DB access fails (e.g. in Edge Runtime)
-            try {
-                const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
-                const maintenanceRes = await fetch(
-                    `${baseUrl}/api/admin/maintenance`,
-                    { cache: "no-store", headers: { "Cache-Control": "no-cache, no-store, must-revalidate", Pragma: "no-cache" } }
-                );
-                
-                if (maintenanceRes.ok) {
-                    const maintenance = await maintenanceRes.json();
-                    if (maintenance.isActive) {
-                        const token = await getToken({ req });
-                        const role = (token as any)?.platformRole;
-                        if (role !== "OWNER") {
-                            if (pathname.startsWith("/api/")) {
-                                return NextResponse.json({ message: "Service under maintenance" }, { status: 503 });
-                            }
-                            return NextResponse.redirect(new URL("/maintenance", req.url));
-                        }
-                    }
-                }
-            } catch (fetchError) {
-                console.error("Maintenance fallback fetch failed:", fetchError);
+                // All other routes redirect to maintenance page
+                return NextResponse.redirect(new URL("/maintenance", req.url));
             }
         }
     }

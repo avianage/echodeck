@@ -4,9 +4,10 @@
 set -e
 
 echo "Running Prisma migrations..."
-# In production, we use 'migrate deploy' to apply pending migrations
-# Use npx to run the prisma CLI
-npx --yes prisma migrate deploy
+npx prisma migrate deploy
+
+echo "Regenerating Prisma client..."
+npx prisma generate
 
 echo "Starting the application..."
-exec node server.js
+exec npm start
