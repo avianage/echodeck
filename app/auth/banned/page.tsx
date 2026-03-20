@@ -18,18 +18,32 @@ export default function BannedPage() {
             return;
         }
 
-        if (status === "authenticated") {
-            fetch("/api/user/profile") // We'll need this endpoint or just use session if updated
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.isBanned && (!data.bannedUntil || new Date(data.bannedUntil) <= new Date())) {
+        const checkStatus = async () => {
+            if (status !== "authenticated") return;
+            try {
+                const res = await fetch("/api/user/me");
+                if (res.ok) {
+                    const { user } = await res.json();
+                    const isRestricted = user.isBanned || (user.bannedUntil && new Date(user.bannedUntil) > new Date());
+                    
+                    if (!isRestricted) {
                         router.push("/dashboard");
                     } else {
-                        setUserData(data);
+                        setUserData(user);
                     }
-                });
-        }
-    }, [status]);
+                }
+            } catch (err) {
+                console.error("Failed to check restriction status:", err);
+            }
+        };
+
+        // Initial check
+        checkStatus();
+
+        // Poll every 5 seconds
+        const interval = setInterval(checkStatus, 5000);
+        return () => clearInterval(interval);
+    }, [status, router]);
 
     if (status === "loading" || !userData) {
         return <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-white font-mono">Verifying account status...</div>;
