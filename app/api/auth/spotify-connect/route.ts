@@ -6,7 +6,7 @@ import { authOptions } from "@/app/lib/auth";
 export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id;
-    if (!userId) return NextResponse.redirect(new URL("/auth/signin", req.url));
+    if (!userId) return NextResponse.redirect(new URL("/auth/signin", process.env.NEXTAUTH_URL || "https://echodeck.avianage.in"));
 
     const scopes = [
         "user-read-email",

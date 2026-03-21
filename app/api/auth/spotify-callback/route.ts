@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get("state");
 
     if (!code || !userId) {
-        return NextResponse.redirect(new URL("/account?error=spotify_link_failed", req.url));
+        return NextResponse.redirect(new URL("/account?error=spotify_link_failed", process.env.NEXTAUTH_URL || "https://echodeck.avianage.in"));
     }
 
     try {
@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
             }
         });
 
-        return NextResponse.redirect(new URL("/account?spotify=connected", req.url));
+        return NextResponse.redirect(new URL("/account?spotify=connected", process.env.NEXTAUTH_URL || "https://echodeck.avianage.in"));
     } catch (err) {
         console.error("Spotify callback error:", err);
-        return NextResponse.redirect(new URL("/account?error=spotify_link_failed", req.url));
+        return NextResponse.redirect(new URL("/account?error=spotify_link_failed", process.env.NEXTAUTH_URL || "https://echodeck.avianage.in"));
     }
 }
 

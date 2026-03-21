@@ -142,18 +142,29 @@ export default async function middleware(req: NextRequest) {
 
     const token = await getToken({ req });
 
+    const purifyUrl = (urlStr: string) => {
+        try {
+            const url = new URL(urlStr);
+            if (url.port === '3002' || url.hostname === 'localhost' || !url.hostname.includes('.') || /^[a-f0-9]{8,}$/.test(url.hostname)) {
+                const publicUrl = new URL(url.pathname + url.search, responseOrigin);
+                return publicUrl.toString();
+            }
+        } catch (e) {}
+        return urlStr;
+    };
+
     if (!token && pathname.startsWith("/party/")) {
         const signInUrl = new URL("/auth/signin", req.url);
-        signInUrl.searchParams.set("callbackUrl", req.url);
-        return applyCors(NextResponse.redirect(signInUrl));
+        signInUrl.searchParams.set("callbackUrl", purifyUrl(req.url));
+        return applyCors(NextResponse.redirect(purifyUrl(signInUrl.toString())));
     }
 
     if (token && !(token as any).username &&
         pathname !== "/auth/setup" &&
         !pathname.startsWith("/api/user/")) {
         const setupUrl = new URL("/auth/setup", req.url);
-        setupUrl.searchParams.set("callbackUrl", req.url);
-        return applyCors(NextResponse.redirect(setupUrl));
+        setupUrl.searchParams.set("callbackUrl", purifyUrl(req.url));
+        return applyCors(NextResponse.redirect(purifyUrl(setupUrl.toString())));
     }
 
     if (token && pathname.startsWith("/stream")) {

@@ -174,57 +174,63 @@ export const authOptions: NextAuthOptions = {
             return true;
         },
         async redirect({ url, baseUrl }) {
-            // Priority 1: Use NEXTAUTH_URL from environment if set
-            // Priority 2: Use baseUrl (this might be internal in Docker)
-            // Priority 3: Hardcoded fallback as a last resort for this specific domain
-            const publicBase = process.env.NEXTAUTH_URL || (baseUrl.includes('96bd5d0481cd') || baseUrl.includes('localhost') ? 'https://echodeck.avianage.in' : baseUrl);
+            const isInternalHost = (host: string) => 
+                host === 'localhost' || 
+                !host.includes('.') || 
+                /^[a-f0-9]{8,}$/.test(host.split(':')[0]) || // handle cases with ports in host
+                host.includes(':3002');
+
+            const nextAuthUrl = process.env.NEXTAUTH_URL;
+            let nextAuthOrigin = '';
+            try {
+                if (nextAuthUrl) nextAuthOrigin = new URL(nextAuthUrl).origin;
+            } catch (e) {}
+
+            // Priority 1: Use NEXTAUTH_URL origin if set
+            // Priority 2: If baseUrl is internal, fallback to fixed production domain
+            // Priority 3: use baseUrl
+            let publicBase = nextAuthOrigin;
+            if (!publicBase) {
+                try {
+                    const parsedBase = new URL(baseUrl);
+                    publicBase = isInternalHost(parsedBase.host) ? 'https://echodeck.avianage.in' : baseUrl;
+                } catch (e) {
+                    publicBase = 'https://echodeck.avianage.in';
+                }
+            }
 
             // Strip internal Docker container URLs from callbackUrl param
             const sanitizeUrl = (u: string) => {
                 try {
                     const parsed = new URL(u.startsWith('http') ? u : `${publicBase}${u}`);
-                    
-                    // Comprehensive internal hostname check:
-                    // 1. Matches common Docker hex hash patterns (e.g., 8dac1497132e)
-                    // 2. Contains localhost
-                    // 3. Port is 3002 (internal app port)
-                    // 4. Hostname has no dots (internal Docker network host)
-                    const isInternal =
-                        parsed.port === '3002' ||
-                        parsed.hostname === 'localhost' ||
-                        !parsed.hostname.includes('.') ||
-                        /^[a-f0-9]{8,}$/.test(parsed.hostname); 
-                    
-                    if (isInternal) {
+                    if (isInternalHost(parsed.host)) {
                         const sanitized = publicBase + (parsed.pathname !== '/' ? parsed.pathname : '');
                         console.log(`🔧 [Auth] Sanitized internal URL: ${u} -> ${sanitized}`);
                         return sanitized;
                     }
-                } catch (e) {
-                    // relative URL — safe
-                }
+                } catch (e) {}
                 return u;
             };
 
             // Handle callbackUrl param inside the url
             if (url.includes('callbackUrl=')) {
-                const urlObj = new URL(url.startsWith('http') ? url : `${publicBase}${url}`);
-                const callbackUrl = urlObj.searchParams.get('callbackUrl');
-                if (callbackUrl) {
-                    const sanitized = sanitizeUrl(decodeURIComponent(callbackUrl));
-                    urlObj.searchParams.set('callbackUrl', sanitized);
-                    // Also fix the base of the URL itself if it's internal
-                    const fixedBase = new URL(urlObj.pathname + urlObj.search, publicBase);
-                    const finalUrl = fixedBase.toString();
-                    console.log(`🎯 [Auth] Redirect check (with callbackUrl): ${url} -> ${finalUrl}`);
-                    return finalUrl;
-                }
+                try {
+                    const urlObj = new URL(url.startsWith('http') ? url : `${publicBase}${url}`);
+                    const callbackUrlParam = urlObj.searchParams.get('callbackUrl');
+                    if (callbackUrlParam) {
+                        const sanitized = sanitizeUrl(decodeURIComponent(callbackUrlParam));
+                        urlObj.searchParams.set('callbackUrl', sanitized);
+                        const fixedBase = new URL(urlObj.pathname + urlObj.search, publicBase);
+                        const finalUrl = fixedBase.toString();
+                        console.log(`🎯 [Auth] Redirect check (with callbackUrl): ${url} -> ${finalUrl}`);
+                        return finalUrl;
+                    }
+                } catch (e) {}
             }
 
             if (url.startsWith('/')) return `${publicBase}${url}`;
             if (url.startsWith(publicBase)) return url;
 
-            // Sanitize the url itself if it's an internal address
             const finalUrl = sanitizeUrl(url);
             if (finalUrl !== url) {
                 console.log(`🎯 [Auth] Redirect sanitized: ${url} -> ${finalUrl}`);
