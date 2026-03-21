@@ -19,8 +19,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Username already taken" }, { status: 409 });
     }
 
+    // Auto-bootstrap: If no owner exists in the system, the first user to setup becomes the owner.
+    // This bypasses build-time env var issues and ensures the platform can be initialized easily.
+    const ownerCount = await prismaClient.user.count({
+        where: { platformRole: "OWNER" }
+    });
+
+    const isFirstOwner = ownerCount === 0;
     const allowOwnerCreation = process.env.ALLOW_OWNER_CREATION === "true" || process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true";
-    const finalRole = (role === "OWNER" && allowOwnerCreation) ? "OWNER" : "MEMBER";
+    
+    // User becomes owner if they are the first one OR if the manual toggle is on and they selected it.
+    const finalRole = (isFirstOwner || (role === "OWNER" && allowOwnerCreation)) ? "OWNER" : "MEMBER";
+
+    console.log(`👤 Setting up user ${userId} with role ${finalRole} (First owner: ${isFirstOwner})`);
 
     await prismaClient.user.update({
         where: { id: userId },
@@ -32,6 +43,6 @@ export async function POST(req: NextRequest) {
         }
     });
 
-    return NextResponse.json({ message: "Setup complete" });
+    return NextResponse.json({ message: "Setup complete", role: finalRole });
 }
 

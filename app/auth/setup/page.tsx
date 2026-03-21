@@ -12,30 +12,10 @@ function SetupContent() {
 
     const [username, setUsername] = useState("");
     const [displayName, setDisplayName] = useState("");
-    const [role, setRole] = useState<"MEMBER" | "OWNER">("MEMBER");
     const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
     const [reason, setReason] = useState("");
     const [isChecking, setIsChecking] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const [isConfigLoaded, setIsConfigLoaded] = useState(false);
-    const [allowOwnerCreation, setAllowOwnerCreation] = useState(false);
-
-    // Fetch dynamic config to bypass build-time NEXT_PUBLIC_ limitations
-    useEffect(() => {
-        fetch("/api/config")
-            .then(res => res.json())
-            .then(data => {
-                setAllowOwnerCreation(data.allowOwnerCreation);
-                setIsConfigLoaded(true);
-            })
-            .catch(err => {
-                console.error("Failed to load config:", err);
-                // Fallback to build-time env if API fails
-                setAllowOwnerCreation(process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true");
-                setIsConfigLoaded(true);
-            });
-    }, []);
 
     const safeJson = async (res: Response) => {
         const contentType = res.headers.get("content-type");
@@ -88,13 +68,13 @@ function SetupContent() {
         
         if (session?.user && (session.user as any).username) {
             console.log("🚀 User already setup, redirecting to", callbackUrl);
-            router.push(callbackUrl);
+            window.location.href = callbackUrl;
         }
-    }, [session, router, callbackUrl]);
+    }, [session, callbackUrl]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("🔘 [Setup] Form submitted with:", { username, displayName, role, isAvailable });
+        console.log("🔘 [Setup] Form submitted with:", { username, displayName, isAvailable });
         
         if (isAvailable !== true) {
             console.warn("⚠️ Cannot submit: username is not available or still checking.");
@@ -108,7 +88,7 @@ function SetupContent() {
             const res = await fetch("/api/user/setup", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, displayName, role })
+                body: JSON.stringify({ username, displayName })
             });
 
             console.log(`📦 [Setup] Received response (Status ${res.status})`);
@@ -116,8 +96,9 @@ function SetupContent() {
             if (res.ok) {
                 const data = await safeJson(res);
                 console.log("✨ [Setup] Success! Updating session and redirecting...");
-                // Pass role too so JWT callback can capture it
-                await update({ username, displayName, platformRole: role });
+                
+                // Pass role too so JWT callback can capture it if returned
+                await update({ username, displayName, platformRole: data.role });
                 
                 // Use a hard refresh to ensure the session cookie is correctly 
                 // picked up by the middleware on the next request.
@@ -210,43 +191,6 @@ function SetupContent() {
                                 />
                             </div>
                         </div>
-
-                        {allowOwnerCreation && (
-                            <div className="space-y-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
-                                <label className="block text-sm font-black uppercase tracking-widest text-blue-400">
-                                    Account Privilege
-                                </label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setRole("MEMBER")}
-                                        className={`py-2 px-4 rounded-lg text-xs font-bold transition-all border ${
-                                            role === "MEMBER" 
-                                                ? "bg-blue-600 border-blue-500 text-white" 
-                                                : "bg-[#222] border-[#333] text-gray-400 hover:border-gray-600"
-                                        }`}
-                                    >
-                                        Standard Member
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setRole("OWNER")}
-                                        className={`py-2 px-4 rounded-lg text-xs font-bold transition-all border ${
-                                            role === "OWNER" 
-                                                ? "bg-amber-600 border-amber-500 text-white shadow-[0_0_15px_rgba(217,119,6,0.3)]" 
-                                                : "bg-[#222] border-[#333] text-gray-400 hover:border-gray-600"
-                                        }`}
-                                    >
-                                        Platform Owner
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-gray-500 italic">
-                                    {role === "OWNER" 
-                                        ? "⚠️ You will have full administrative control over the platform."
-                                        : "Standard accounts can join existing streams and request access."}
-                                </p>
-                            </div>
-                        )}
 
                         <div>
                             <button
