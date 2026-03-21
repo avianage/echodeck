@@ -203,17 +203,17 @@ export function PlayerSection({
                 )}
 
                 {!isJoined && (
-                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
-                        <div className="text-center space-y-6 max-w-sm px-6">
-                            <div className="relative">
-                                <div className="absolute -inset-4 bg-blue-600/20 blur-2xl rounded-full" />
-                                <Play className="w-16 h-16 text-blue-500 mx-auto relative z-10 animate-pulse" />
+                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4">
+                        <div className="text-center space-y-3 sm:space-y-6 w-full max-w-sm flex flex-col items-center px-2 sm:px-6">
+                            <div className="relative shrink-0 mt-1 sm:mt-0">
+                                <div className="absolute -inset-2 sm:-inset-4 bg-blue-600/20 blur-xl sm:blur-2xl rounded-full" />
+                                <Play className="w-10 h-10 sm:w-16 sm:h-16 text-blue-500 mx-auto relative z-10 animate-pulse" />
                             </div>
-                            <div className="space-y-2">
-                                <h3 className="text-2xl font-bold text-white">
+                            <div className="space-y-1 sm:space-y-2 shrink-0">
+                                <h3 className="text-lg sm:text-2xl font-bold text-white leading-tight">
                                     {pathname.startsWith("/party/") ? "Ready to join?" : "Ready to stream?"}
                                 </h3>
-                                <p className="text-gray-400 text-sm">
+                                <p className="text-gray-400 text-[11px] sm:text-sm px-4 sm:px-0 max-w-[280px] sm:max-w-none mx-auto leading-tight sm:leading-normal">
                                     {pathname.startsWith("/party/") 
                                         ? "Click below to sync up with the streamer and start listening." 
                                         : "Click below to start your session and let everyone vibe."}
@@ -222,8 +222,8 @@ export function PlayerSection({
                             <Button
                                 onClick={onGoLive}
                                 disabled={!isPlayerReady}
-                                className={`w-full h-14 text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl ${isPlayerReady
-                                    ? "bg-blue-600 hover:bg-blue-700 text-white scale-105 hover:scale-110"
+                                className={`w-[90%] sm:w-full max-w-[240px] sm:max-w-none h-10 sm:h-14 text-sm sm:text-lg font-bold rounded-xl sm:rounded-2xl transition-all duration-300 shadow-xl shrink-0 mt-1 sm:mt-0 ${isPlayerReady
+                                    ? "bg-blue-600 hover:bg-blue-700 text-white sm:scale-105 sm:hover:scale-110"
                                     : "bg-gray-800 text-gray-500 cursor-not-allowed"
                                     }`}
                             >
