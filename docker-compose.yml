@@ -1,0 +1,15 @@
+services:
+  app:
+    image: echodeck:0.2.0
+    container_name: echodeck
+    restart: always
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env.production
+    networks:
+      - echodeck-net
+
+networks:
+  echodeck-net:
+    driver: bridge
