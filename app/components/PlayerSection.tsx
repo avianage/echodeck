@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import ReactPlayer from "react-player";
 import Image from "next/image";
-import { Lock, Users, CheckCircle, XCircle, Play, VolumeX, Volume2 } from "lucide-react";
+import { Lock, Users, CheckCircle, XCircle, Play, Pause, VolumeX, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Video {
@@ -130,9 +130,9 @@ export function PlayerSection({
                     ) : (
                         <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500">No Image</div>
                     )}
-                </div>
-                <div className="p-4 bg-gray-900 border-t border-gray-800 text-center">
-                    <p className="text-base sm:text-xl font-semibold text-white line-clamp-2 sm:truncate">{currentVideo.title}</p>
+                    <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/40 to-transparent z-20 pointer-events-none">
+                        <p className="text-sm sm:text-lg font-semibold text-white line-clamp-2 sm:truncate drop-shadow-md">{currentVideo.title}</p>
+                    </div>
                 </div>
             </div>
         );
@@ -279,9 +279,10 @@ export function PlayerSection({
                 {pathname.startsWith("/party/") && (
                     <div className="absolute inset-0 z-10 cursor-default" />
                 )}
-            </div>
-            <div className="p-4 bg-gray-900 border-t border-gray-800">
-                <p className="text-base sm:text-xl font-semibold text-white line-clamp-2 sm:truncate">{currentVideo.title}</p>
+
+                <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/40 to-transparent z-20 pointer-events-none">
+                    <p className="text-sm sm:text-lg font-semibold text-white line-clamp-2 sm:truncate drop-shadow-lg">{currentVideo.title}</p>
+                </div>
             </div>
         </div>
     );

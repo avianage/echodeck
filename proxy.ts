@@ -9,7 +9,16 @@ const MAINTENANCE_EXEMPT_PATHS = [
     "/api/user/",
     "/cdn-cgi/",
     "/auth/signin",
+    "/auth/verify",
+    "/auth/setup",
     "/auth/banned",
+    "/auth/link-account",
+    "/auth/confirm-link",
+    "/auth/link-success",
+    "/auth/error",
+    "/discover",
+    "/offline",
+    "/",
     "/_next",
     "/favicon.ico",
     "/public",
@@ -21,10 +30,15 @@ const PUBLIC_PATHS = [
     "/auth/setup",
     "/auth/banned",
     "/auth/link-account",
+    "/auth/confirm-link",
+    "/auth/link-success",
     "/auth/error",
     "/api/auth",
     "/api/user/check-username",
+    "/api/user/setup",
     "/discover",
+    "/maintenance",
+    "/offline",
     "/",
 ];
 
@@ -100,7 +114,7 @@ export async function proxy(req: NextRequest) {
 
     if (token && !(token as any).username &&
         pathname !== "/auth/setup" &&
-        !pathname.startsWith("/api/user/")) {
+        !pathname.startsWith("/api/")) {
         const setupUrl = new URL("/auth/setup", req.url);
         setupUrl.searchParams.set("callbackUrl", purifyUrl(req.url));
         return applyCors(NextResponse.redirect(purifyUrl(setupUrl.toString())));
@@ -117,3 +131,17 @@ export async function proxy(req: NextRequest) {
 }
 
 export default proxy;
+
+export const config = {
+    matcher: [
+        /*
+         * Run middleware on all paths EXCEPT:
+         * - _next/static  (JS chunks, CSS, fonts)
+         * - _next/image   (Next.js image optimization)
+         * - favicon.ico
+         * - public folder files
+         * - cdn-cgi       (Cloudflare)
+         */
+        "/((?!_next/static|_next/image|favicon\\.ico|public/|cdn-cgi/).*)",
+    ],
+};

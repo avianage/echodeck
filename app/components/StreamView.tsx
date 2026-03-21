@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Share2, Play, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2, ShieldAlert, Timer } from "lucide-react";
+import { Share2, Play, Pause, Star, Lock, Globe, X, RefreshCw, Settings, Save, CheckCircle2, ShieldAlert, Timer } from "lucide-react";
 import { toast } from "react-toastify";
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css'
@@ -1114,7 +1114,7 @@ export default function StreamView({
                                 </div>
                             </div>
 
-                            <Card className="bg-gray-900/50 border-gray-800 overflow-hidden backdrop-blur-sm shadow-2xl min-h-[400px] flex flex-col justify-center">
+                            <Card className="bg-gray-900/50 border-gray-800 overflow-hidden backdrop-blur-sm shadow-2xl flex flex-col justify-center">
                                 <CardContent className="p-0 relative flex-1 flex flex-col">
                                     {!pathname.startsWith("/stream") && currentUserId !== null && accessStatus !== "APPROVED" && currentUserId !== creatorId ? (
                                         <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black/60 backdrop-blur-sm">
@@ -1237,6 +1237,45 @@ export default function StreamView({
 
                             {!pathname.startsWith("/party/") && (
                                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                                    <Button
+                                        disabled={!currentVideo}
+                                        onClick={() => {
+                                            if (reactPlayerRef.current) {
+                                                const internalPlayer = reactPlayerRef.current.getInternalPlayer();
+                                                if (playing) {
+                                                    if (internalPlayer && typeof internalPlayer.pauseVideo === 'function') {
+                                                        internalPlayer.pauseVideo();
+                                                    }
+                                                    setPlaying(false);
+                                                    setIsPaused(true);
+                                                    // Trigger manual sync
+                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                    fetch("/api/streams/sync", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ creatorId, type: "pause", currentTime })
+                                                    }).catch(console.error);
+                                                } else {
+                                                    if (internalPlayer && typeof internalPlayer.playVideo === 'function') {
+                                                        internalPlayer.playVideo();
+                                                    }
+                                                    setPlaying(true);
+                                                    setIsPaused(false);
+                                                    // Trigger manual sync
+                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                    fetch("/api/streams/sync", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ creatorId, type: "play", currentTime })
+                                                    }).catch(console.error);
+                                                }
+                                            }
+                                        }}
+                                        className="w-full sm:flex-1 h-11 sm:h-12 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl"
+                                    >
+                                        {playing ? <Pause className="mr-2 h-5 w-5 fill-current" /> : <Play className="mr-2 h-5 w-5 fill-current" />}
+                                        {playing ? "Pause" : "Play"}
+                                    </Button>
                                     <Button
                                         disabled={playNextLoader}
                                         onClick={playNext}
