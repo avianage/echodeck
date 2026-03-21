@@ -162,6 +162,7 @@ export default function StreamView({
     const reactPlayerRef = useRef<ReactPlayer | null>(null);
     const pathname = usePathname();
     const isFixingRestrictedRef = useRef(false);
+    const lastSeekRef = useRef<number>(0);
 
 
     const refreshStreams = useCallback(async (isInitial: boolean = false) => {
@@ -300,6 +301,17 @@ export default function StreamView({
 
 
     useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                lastSeekRef.current = 0;
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
+
+    useEffect(() => {
         console.log("🔵 StreamView mounted");
         const isCreator = !pathname.startsWith("/party/");
 
@@ -402,8 +414,10 @@ export default function StreamView({
 
 
                         // Force seek if listener is > 2s off (including staleness)
-                        if (Math.abs(myTime - compensatedTime) > 2) {
+                        const now = Date.now();
+                        if (Math.abs(myTime - compensatedTime) > 2 && now - lastSeekRef.current > 5000) {
                             console.log(`📡 Syncing with staleness compensation: +${staleness.toFixed(2)}s`);
+                            lastSeekRef.current = now;
                             reactPlayerRef.current.seekTo(compensatedTime, 'seconds');
                         }
 
@@ -430,6 +444,14 @@ export default function StreamView({
                             return; // Stop processing this heartbeat
                         }
                         setStreamIsPublic(data.isPublic);
+
+                        if (reactPlayerRef.current && !data.isPaused) {
+                            const duration = reactPlayerRef.current.getDuration();
+                            const current = reactPlayerRef.current.getCurrentTime();
+                            if (duration > 0 && duration - current < 3) {
+                                playNext();
+                            }
+                        }
 
                         // Process events
                         if (data.events && data.events.length > 0) {

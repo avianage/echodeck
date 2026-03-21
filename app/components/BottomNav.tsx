@@ -3,9 +3,10 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Compass, LayoutDashboard, User, Music } from "lucide-react";
+import { Compass, LayoutDashboard, User, Music, Home } from "lucide-react";
 
 const NAV_ITEMS = [
+  { label: "Home", href: "/", icon: Home },
   { label: "Discover", href: "/discover", icon: Compass },
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Account", href: "/account", icon: User },
@@ -18,8 +19,8 @@ export function BottomNav() {
   if (!session) return null;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100] px-4 pb-6 pt-2">
-      <div className="max-w-md mx-auto bg-black/40 backdrop-blur-xl border border-white/10 rounded-full flex items-center justify-around py-3 px-2 shadow-2xl shadow-primary/20">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gray-950/95 backdrop-blur-sm border-t border-gray-800 pb-safe">
+      <div className="flex items-center justify-around py-2">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -28,7 +29,7 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 relative px-6 py-2 transition-all ${
+              className={`flex flex-col items-center gap-1 relative px-4 py-2 transition-all ${
                 isActive ? "text-primary scale-110" : "text-gray-500 hover:text-gray-300"
               }`}
             >

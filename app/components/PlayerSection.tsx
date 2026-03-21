@@ -118,7 +118,7 @@ export function PlayerSection({
     if (!playVideo) {
         return (
             <div className="w-full">
-                <div className="relative w-full aspect-video sm:h-[280px] md:h-[360px] lg:h-[450px] bg-black">
+                <div className="relative w-full aspect-video md:h-[360px] lg:h-[450px] bg-black">
                     {currentVideo.bigImg ? (
                         <Image
                             src={currentVideo.bigImg}
@@ -132,7 +132,7 @@ export function PlayerSection({
                     )}
                 </div>
                 <div className="p-4 bg-gray-900 border-t border-gray-800 text-center">
-                    <p className="text-xl font-semibold text-white truncate">{currentVideo.title}</p>
+                    <p className="text-base sm:text-xl font-semibold text-white line-clamp-2 sm:truncate">{currentVideo.title}</p>
                 </div>
             </div>
         );
@@ -140,7 +140,7 @@ export function PlayerSection({
 
     return (
         <div className="w-full relative">
-            <div className="relative w-full aspect-video sm:h-[280px] md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
+            <div className="relative w-full aspect-video md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
                 {isResolving && (
                     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm gap-4">
                         <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
@@ -281,7 +281,7 @@ export function PlayerSection({
                 )}
             </div>
             <div className="p-4 bg-gray-900 border-t border-gray-800">
-                <p className="text-xl font-semibold text-white truncate">{currentVideo.title}</p>
+                <p className="text-base sm:text-xl font-semibold text-white line-clamp-2 sm:truncate">{currentVideo.title}</p>
             </div>
         </div>
     );

@@ -13,7 +13,7 @@ export function Appbar() {
   const session = useSession();
   const [isMenuOpen, setIsMenuOpen] = useState(false); // test reload 6
 
-    return <div className="flex flex-col md:flex-row justify-between items-center py-4 px-6 md:px-12 bg-black/40 backdrop-blur-xl border-b border-white/5 relative z-50">
+    return <div className="hidden md:flex flex-col md:flex-row justify-between items-center py-4 px-6 md:px-12 bg-black/40 backdrop-blur-xl border-b border-white/5 relative z-50">
       <div className="w-full flex justify-between items-center md:w-auto">
         <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="relative group">

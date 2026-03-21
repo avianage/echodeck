@@ -1,16 +1,13 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@/app/lib/db";
-
-export const runtime = 'nodejs';
 
 const MAINTENANCE_EXEMPT_PATHS = [
     "/maintenance",
-    "/api/admin/maintenance", // so the maintenance page can poll
+    "/api/admin/maintenance",
     "/api/auth",
-    "/api/health", // Health checks
-    "/api/user/",   // User setup/check APIs
-    "/cdn-cgi/",   // Cloudflare internal paths (RUM, etc.)
+    "/api/health",
+    "/api/user/",
+    "/cdn-cgi/",
     "/auth/signin",
     "/auth/banned",
     "/_next",
@@ -31,41 +28,7 @@ const PUBLIC_PATHS = [
     "/",
 ];
 
-async function getMaintenanceStatus(): Promise<{
-    active: boolean;
-    message?: string;
-    endsAt?: Date | null;
-}> {
-    try {
-        const maintenance = await prismaClient.maintenanceMode.findUnique({
-            where: { id: "singleton" }
-        });
-
-        if (!maintenance || !maintenance.isActive) {
-            return { active: false };
-        }
-
-        // Auto-expire if duration has passed
-        if (maintenance.endsAt && new Date(maintenance.endsAt) < new Date()) {
-            await prismaClient.maintenanceMode.update({
-                where: { id: "singleton" },
-                data: { isActive: false }
-            });
-            return { active: false };
-        }
-
-        return {
-            active: true,
-            message: maintenance.message ?? undefined,
-            endsAt: maintenance.endsAt
-        };
-    } catch (err) {
-        console.error("Maintenance check failed:", err);
-        return { active: false };
-    }
-}
-
-export default async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // --- CORS HANDLING ---
@@ -83,11 +46,9 @@ export default async function middleware(req: NextRequest) {
         nextAuthOrigin
     ].filter(Boolean);
 
-    // If the origin is in our allowed list, or if it's the exact same as the site's own origin, allow it
     const isAllowedOrigin = origin && (allowedOrigins.includes(origin) || origin === req.nextUrl.origin);
     const responseOrigin = isAllowedOrigin ? origin! : (nextAuthOrigin || 'https://echodeck.avianage.in');
 
-    // Handle Preflight
     if (req.method === 'OPTIONS') {
         return new NextResponse(null, {
             status: 204,
@@ -106,31 +67,9 @@ export default async function middleware(req: NextRequest) {
         res.headers.set('Access-Control-Allow-Credentials', 'true');
         return res;
     };
-    // --- END CORS ---
 
-    // --- MAINTENANCE MODE CHECK ---
-    const isExempt = MAINTENANCE_EXEMPT_PATHS.some(p => pathname.startsWith(p));
-
-    if (!isExempt) {
-        const maintenance = await getMaintenanceStatus();
-
-        if (maintenance.active) {
-            const token = await getToken({ req });
-            const role = (token as any)?.platformRole;
-
-            if (role !== "OWNER") {
-                if (pathname.startsWith("/api/")) {
-                    return applyCors(NextResponse.json(
-                        { message: "Service under maintenance" },
-                        { status: 503 }
-                    ));
-                }
-                return NextResponse.redirect(new URL("/maintenance", req.url));
-            }
-        }
-    }
-
-    // Always allow public paths and static assets
+    // Skip maintenance check for now during debugging
+    
     const isPublicPath = PUBLIC_PATHS.some(p => {
         if (p === "/") return pathname === "/";
         return pathname.startsWith(p);
@@ -177,6 +116,4 @@ export default async function middleware(req: NextRequest) {
     return applyCors(NextResponse.next());
 }
 
-export const config = {
-    matcher: ["/((?!_next/static|_next/image|favicon.ico|public/).*)"],
-};
+export default proxy;
