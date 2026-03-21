@@ -183,15 +183,24 @@ export const authOptions: NextAuthOptions = {
             const sanitizeUrl = (u: string) => {
                 try {
                     const parsed = new URL(u.startsWith('http') ? u : `${publicBase}${u}`);
-                    // If it's an internal container hostname (no dots, has port, or matches docker hash pattern)
+                    
+                    // Comprehensive internal hostname check:
+                    // 1. Matches common Docker hex hash patterns (e.g., 8dac1497132e)
+                    // 2. Contains localhost
+                    // 3. Port is 3002 (internal app port)
+                    // 4. Hostname has no dots (internal Docker network host)
                     const isInternal =
                         parsed.port === '3002' ||
+                        parsed.hostname === 'localhost' ||
                         !parsed.hostname.includes('.') ||
-                        /^[a-f0-9]{12}$/.test(parsed.hostname) || // Docker container ID pattern
-                        parsed.hostname === 'localhost';
+                        /^[a-f0-9]{8,}$/.test(parsed.hostname); 
                     
-                    if (isInternal) return publicBase + (parsed.pathname !== '/' ? parsed.pathname : '');
-                } catch {
+                    if (isInternal) {
+                        const sanitized = publicBase + (parsed.pathname !== '/' ? parsed.pathname : '');
+                        console.log(`🔧 [Auth] Sanitized internal URL: ${u} -> ${sanitized}`);
+                        return sanitized;
+                    }
+                } catch (e) {
                     // relative URL — safe
                 }
                 return u;
@@ -206,7 +215,9 @@ export const authOptions: NextAuthOptions = {
                     urlObj.searchParams.set('callbackUrl', sanitized);
                     // Also fix the base of the URL itself if it's internal
                     const fixedBase = new URL(urlObj.pathname + urlObj.search, publicBase);
-                    return fixedBase.toString();
+                    const finalUrl = fixedBase.toString();
+                    console.log(`🎯 [Auth] Redirect check (with callbackUrl): ${url} -> ${finalUrl}`);
+                    return finalUrl;
                 }
             }
 
@@ -214,7 +225,11 @@ export const authOptions: NextAuthOptions = {
             if (url.startsWith(publicBase)) return url;
 
             // Sanitize the url itself if it's an internal address
-            return sanitizeUrl(url);
+            const finalUrl = sanitizeUrl(url);
+            if (finalUrl !== url) {
+                console.log(`🎯 [Auth] Redirect sanitized: ${url} -> ${finalUrl}`);
+            }
+            return finalUrl;
         }
     },
     pages: {
