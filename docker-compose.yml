@@ -1,39 +1,15 @@
 services:
-  db:
-    image: postgres:17-alpine
-    container_name: echodeck-db
-    restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-echodeck}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: echodeck-app
+    image: echodeck:0.2.0
+    container_name: echodeck
     restart: always
     ports:
-      - "3000:3000"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-echodeck}?schema=public
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      PUSHER_APP_ID: ${PUSHER_APP_ID}
-      PUSHER_KEY: ${PUSHER_KEY}
-      PUSHER_SECRET: ${PUSHER_SECRET}
-      PUSHER_CLUSTER: ${PUSHER_CLUSTER}
-      NEXT_PUBLIC_PUSHER_KEY: ${PUSHER_KEY}
-      NEXT_PUBLIC_PUSHER_CLUSTER: ${PUSHER_CLUSTER}
-    depends_on:
-      - db
+      - "3002:3002"
+    env_file:
+      - .env.production
+    networks:
+      - echodeck-net
 
-volumes:
-  postgres_data:
+networks:
+  echodeck-net:
+    driver: bridge

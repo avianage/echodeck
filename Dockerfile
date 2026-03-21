@@ -23,6 +23,8 @@ RUN test -f ./node_modules/yt-dlp-exec/bin/yt-dlp || \
     (echo "❌ yt-dlp binary missing after install" && exit 1)
 
 # Build the app with increased memory limit
+ARG NEXT_PUBLIC_ALLOW_OWNER_CREATION
+ENV NEXT_PUBLIC_ALLOW_OWNER_CREATION=$NEXT_PUBLIC_ALLOW_OWNER_CREATION
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
