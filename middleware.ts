@@ -10,6 +10,7 @@ const MAINTENANCE_EXEMPT_PATHS = [
     "/api/auth",
     "/api/health", // Health checks
     "/api/user/",   // User setup/check APIs
+    "/api/config",
     "/cdn-cgi/",   // Cloudflare internal paths (RUM, etc.)
     "/auth/signin",
     "/auth/banned",
@@ -161,7 +162,8 @@ export default async function middleware(req: NextRequest) {
 
     if (token && !(token as any).username &&
         pathname !== "/auth/setup" &&
-        !pathname.startsWith("/api/user/")) {
+        !pathname.startsWith("/api/user/") &&
+        pathname !== "/api/config") {
         const setupUrl = new URL("/auth/setup", req.url);
         setupUrl.searchParams.set("callbackUrl", purifyUrl(req.url));
         return applyCors(NextResponse.redirect(purifyUrl(setupUrl.toString())));
