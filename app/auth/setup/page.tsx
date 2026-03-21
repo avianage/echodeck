@@ -18,14 +18,30 @@ function SetupContent() {
     const [isChecking, setIsChecking] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const allowOwnerCreation = process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true";
+    const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+    const [allowOwnerCreation, setAllowOwnerCreation] = useState(false);
+
+    // Fetch dynamic config to bypass build-time NEXT_PUBLIC_ limitations
+    useEffect(() => {
+        fetch("/api/config")
+            .then(res => res.json())
+            .then(data => {
+                setAllowOwnerCreation(data.allowOwnerCreation);
+                setIsConfigLoaded(true);
+            })
+            .catch(err => {
+                console.error("Failed to load config:", err);
+                // Fallback to build-time env if API fails
+                setAllowOwnerCreation(process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true");
+                setIsConfigLoaded(true);
+            });
+    }, []);
 
     const safeJson = async (res: Response) => {
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
             return await res.json();
         }
-        // If not JSON, it might be a redirect or an error page (HTML)
         throw new Error(`Unexpected response format: ${contentType || 'unknown'}. The request may have been redirected.`);
     };
 
@@ -47,12 +63,14 @@ function SetupContent() {
         setIsChecking(true);
         const timer = setTimeout(async () => {
             try {
+                console.log(`🔍 Checking username: ${username}`);
                 const res = await fetch(`/api/user/check-username?username=${username}`);
                 const data = await safeJson(res);
+                console.log(`✅ Username check result:`, data);
                 setIsAvailable(data.available);
                 setReason(data.reason || "");
             } catch (err) {
-                console.error("Failed to check username:", err);
+                console.error("❌ Failed to check username:", err);
                 setReason("Failed to verify username availability");
             } finally {
                 setIsChecking(false);
@@ -68,41 +86,51 @@ function SetupContent() {
             setDisplayName(session.user.name);
         }
         
-        // If user already has a username, they shouldn't be here
         if (session?.user && (session.user as any).username) {
+            console.log("🚀 User already setup, redirecting to", callbackUrl);
             router.push(callbackUrl);
         }
     }, [session, router, callbackUrl]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isAvailable !== true) return;
+        console.log("🔘 [Setup] Form submitted with:", { username, displayName, role, isAvailable });
+        
+        if (isAvailable !== true) {
+            console.warn("⚠️ Cannot submit: username is not available or still checking.");
+            return;
+        }
 
         setIsSubmitting(true);
         setReason("");
         try {
+            console.log("📡 [Setup] Sending setup request to /api/user/setup...");
             const res = await fetch("/api/user/setup", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, displayName, role })
             });
 
+            console.log(`📦 [Setup] Received response (Status ${res.status})`);
+            
             if (res.ok) {
                 const data = await safeJson(res);
+                console.log("✨ [Setup] Success! Updating session and redirecting...");
                 await update({ username, displayName });
                 router.push(callbackUrl);
             } else {
                 try {
                     const data = await safeJson(res);
+                    console.error("❌ [Setup] Server error data:", data);
                     setIsAvailable(false);
                     setReason(data.message || "Failed to set up profile");
                 } catch (parseErr) {
-                    console.error("Parse error during failure handling:", parseErr);
+                    console.error("❌ [Setup] Parse error during failure handling:", parseErr);
                     setReason(`Server error (Status ${res.status}). Please refresh and try again.`);
                 }
             }
         } catch (err) {
-            console.error("Setup error details:", err);
+            console.error("❌ [Setup] Critical network error:", err);
             setReason(err instanceof Error ? err.message : "An unexpected error occurred. Please check your connection.");
         } finally {
             setIsSubmitting(false);

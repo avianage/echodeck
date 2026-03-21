@@ -45,4 +45,3 @@ next-env.d.ts
 !prisma/migrations/**/*.sql
 backup_*.sql
 docker-compose.yml
-docker-compose.yml

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Username already taken" }, { status: 409 });
     }
 
-    const allowOwnerCreation = process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true";
+    const allowOwnerCreation = process.env.ALLOW_OWNER_CREATION === "true" || process.env.NEXT_PUBLIC_ALLOW_OWNER_CREATION === "true";
     const finalRole = (role === "OWNER" && allowOwnerCreation) ? "OWNER" : "MEMBER";
 
     await prismaClient.user.update({
