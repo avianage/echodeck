@@ -116,8 +116,12 @@ function SetupContent() {
             if (res.ok) {
                 const data = await safeJson(res);
                 console.log("✨ [Setup] Success! Updating session and redirecting...");
-                await update({ username, displayName });
-                router.push(callbackUrl);
+                // Pass role too so JWT callback can capture it
+                await update({ username, displayName, platformRole: role });
+                
+                // Use a hard refresh to ensure the session cookie is correctly 
+                // picked up by the middleware on the next request.
+                window.location.href = callbackUrl;
             } else {
                 try {
                     const data = await safeJson(res);
