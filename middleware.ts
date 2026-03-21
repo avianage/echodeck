@@ -8,7 +8,8 @@ const MAINTENANCE_EXEMPT_PATHS = [
     "/maintenance",
     "/api/admin/maintenance", // so the maintenance page can poll
     "/api/auth",
-    "/api/health", // Health checks don't need maintenance or auth checks
+    "/api/health", // Health checks
+    "/cdn-cgi/",   // Cloudflare internal paths (RUM, etc.)
     "/auth/signin",
     "/auth/banned",
     "/_next",
@@ -58,8 +59,6 @@ async function getMaintenanceStatus(): Promise<{
             endsAt: maintenance.endsAt
         };
     } catch (err) {
-        // If DB is unreachable for any reason, fail open —
-        // never block all traffic due to a maintenance check failure
         console.error("Maintenance check failed:", err);
         return { active: false };
     }
@@ -70,8 +69,22 @@ export default async function middleware(req: NextRequest) {
 
     // --- CORS HANDLING ---
     const origin = req.headers.get('origin');
-    const allowedOrigins = ['https://echodeck.avianage.in', 'http://localhost:3000', 'http://localhost:3002'];
-    const responseOrigin = origin && allowedOrigins.includes(origin) ? origin : 'https://echodeck.avianage.in';
+    const nextAuthUrl = process.env.NEXTAUTH_URL;
+    let nextAuthOrigin = '';
+    try {
+        if (nextAuthUrl) nextAuthOrigin = new URL(nextAuthUrl).origin;
+    } catch (e) {}
+
+    const allowedOrigins = [
+        'https://echodeck.avianage.in',
+        'http://localhost:3000',
+        'http://localhost:3002',
+        nextAuthOrigin
+    ].filter(Boolean);
+
+    // If the origin is in our allowed list, or if it's the exact same as the site's own origin, allow it
+    const isAllowedOrigin = origin && (allowedOrigins.includes(origin) || origin === req.nextUrl.origin);
+    const responseOrigin = isAllowedOrigin ? origin! : (nextAuthOrigin || 'https://echodeck.avianage.in');
 
     // Handle Preflight
     if (req.method === 'OPTIONS') {
@@ -81,6 +94,7 @@ export default async function middleware(req: NextRequest) {
                 'Access-Control-Allow-Origin': responseOrigin,
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                'Access-Control-Allow-Credentials': 'true',
                 'Access-Control-Max-Age': '86400',
             },
         });
