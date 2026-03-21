@@ -15,14 +15,13 @@ export async function GET() {
         checks.database = { status: "error", detail: err instanceof Error ? err.message : String(err) };
     }
 
-    // Check yt-dlp binary
+    // Check yt-dlp binary (system package)
     try {
-        const binaryName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
-        const binaryPath = path.join(process.cwd(), "node_modules", "yt-dlp-exec", "bin", binaryName);
-        execSync(`"${binaryPath}" --version`, { timeout: 5000 });
+        const command = process.platform === "win32" ? "yt-dlp.exe --version" : "yt-dlp --version";
+        execSync(command, { timeout: 5000, stdio: 'ignore' });
         checks.ytdlp = { status: "ok" };
     } catch (err) {
-        checks.ytdlp = { status: "error", detail: "Binary missing or not executable" };
+        checks.ytdlp = { status: "error", detail: "System yt-dlp package not found or not executable" };
     }
 
     const allOk = Object.values(checks).every(c => c.status === "ok");

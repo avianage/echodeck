@@ -8,6 +8,7 @@ const MAINTENANCE_EXEMPT_PATHS = [
     "/maintenance",
     "/api/admin/maintenance", // so the maintenance page can poll
     "/api/auth",
+    "/api/health", // Health checks don't need maintenance or auth checks
     "/auth/signin",
     "/auth/banned",
     "/_next",
