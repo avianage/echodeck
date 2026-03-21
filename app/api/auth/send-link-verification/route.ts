@@ -22,20 +22,62 @@ export async function POST(req: NextRequest) {
         to: normalizedEmail,
         subject: "Confirm account linking — EchoDeck",
         html: `
-            <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px; background: #111111; color: #ffffff; border-radius: 16px;">
-                <h1 style="font-size: 28px; font-weight: 800; color: #4a90e2; margin: 0 0 8px 0;">EchoDeck</h1>
-                <p style="color: #cccccc; font-size: 15px; line-height: 1.6; margin-top: 24px;">
-                    Click below to connect <strong style="color: #fff;">${provider}</strong> to your existing EchoDeck account.
-                    This link expires in <strong style="color: #fff;">15 minutes</strong>.
-                </p>
-                <a href="${verifyUrl}"
-                   style="display: inline-block; margin-top: 28px; padding: 14px 32px; background: #4a90e2; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px;">
-                    Connect ${provider.charAt(0).toUpperCase() + provider.slice(1)}
-                </a>
-                <p style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #222; color: #555; font-size: 12px;">
-                    If you didn't request this, ignore this email. Your account will not be changed.
-                </p>
-            </div>
+            <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                <tr>
+                    <td align="center" style="padding: 40px 20px;">
+                        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #111111; border: 1px solid #222222; border-radius: 20px; overflow: hidden;">
+                            <tr>
+                                <td style="padding: 40px;">
+                                    <!-- Header -->
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                        <tr>
+                                            <td>
+                                                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #4a90e2; letter-spacing: -0.5px;">EchoDeck</h1>
+                                            </td>
+                                            <td align="right">
+                                                <span style="background-color: #222222; color: #888888; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; tracking: 0.1em;">Verification</span>
+                                            </td>
+                                        </tr>
+                                    </table>
+
+                                    <!-- Content -->
+                                    <h2 style="margin: 32px 0 16px 0; font-size: 20px; font-weight: 700; color: #ffffff;">Complete your connection 🔒</h2>
+                                    <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #aaaaaa;">
+                                        You're about to link your <strong style="color: #fff;">${provider}</strong> account to EchoDeck. Your existing data, queue, and friends will be preserved.
+                                    </p>
+
+                                    <!-- CTA Button -->
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 32px;">
+                                        <tr>
+                                            <td align="center">
+                                                <a href="${verifyUrl}" style="display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #4a90e2 0%, #2563eb 100%); color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);">
+                                                    Connect ${provider.charAt(0).toUpperCase() + provider.slice(1)} →
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    </table>
+
+                                    <!-- Info Box -->
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 32px; background-color: #1a1a1a; border-radius: 12px;">
+                                        <tr>
+                                            <td style="padding: 16px;">
+                                                <p style="margin: 0; font-size: 12px; color: #777777; line-height: 1.5;">
+                                                    <strong style="color: #999999;">Security Note:</strong> This link expires in 15 minutes. If you didn't request this linking, please ignore this email.
+                                                </p>
+                                            </td>
+                                        </tr>
+                                    </table>
+
+                                    <!-- Footer -->
+                                    <p style="margin: 32px 0 0 0; font-size: 11px; color: #444444; text-align: center; border-top: 1px solid #222222; padding-top: 24px;">
+                                        &copy; ${new Date().getFullYear()} EchoDeck. Collaborative Music Streaming.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         `
     });
 

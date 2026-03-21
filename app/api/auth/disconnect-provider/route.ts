@@ -27,6 +27,13 @@ export async function POST(req: NextRequest) {
         }
 
         if (provider === "spotify") {
+            // Delete the NextAuth Account record for Spotify
+            await prismaClient.account.deleteMany({
+                where: {
+                    userId,
+                    provider: "spotify"
+                }
+            });
             // Clear Spotify fields on the User record
             await prismaClient.user.update({
                 where: { id: userId },

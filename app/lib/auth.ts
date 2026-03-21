@@ -25,20 +25,62 @@ export const authOptions: NextAuthOptions = {
                     to: email,
                     subject: "Sign in to EchoDeck",
                     html: `
-                        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px; background: #111111; color: #ffffff; border-radius: 16px;">
-                            <h1 style="font-size: 28px; font-weight: 800; color: #4a90e2; margin: 0 0 8px 0;">EchoDeck</h1>
-                            <p style="color: #888; font-size: 13px; margin: 0 0 32px 0;">Collaborative Music Streaming</p>
-                            <p style="color: #cccccc; font-size: 15px; line-height: 1.6;">
-                                Click the button below to sign in to your account. This link expires in <strong style="color: #fff;">15 minutes</strong> and can only be used once.
-                            </p>
-                            <a href="${url}"
-                               style="display: inline-block; margin-top: 28px; padding: 14px 32px; background: #4a90e2; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px; letter-spacing: 0.3px;">
-                                Sign in to EchoDeck
-                            </a>
-                            <p style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #222; color: #555; font-size: 12px; line-height: 1.6;">
-                                If you didn't request this email, you can safely ignore it. Someone may have entered your email by mistake.
-                            </p>
-                        </div>
+                        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                            <tr>
+                                <td align="center" style="padding: 40px 20px;">
+                                    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #111111; border: 1px solid #222222; border-radius: 20px; overflow: hidden;">
+                                        <tr>
+                                            <td style="padding: 40px;">
+                                                <!-- Header -->
+                                                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                                    <tr>
+                                                        <td>
+                                                            <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #4a90e2; letter-spacing: -0.5px;">EchoDeck</h1>
+                                                        </td>
+                                                        <td align="right">
+                                                            <span style="background-color: #222222; color: #888888; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; tracking: 0.1em;">Magic Link</span>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+
+                                                <!-- Content -->
+                                                <h2 style="margin: 32px 0 16px 0; font-size: 20px; font-weight: 700; color: #ffffff;">Welcome back! 🎸</h2>
+                                                <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #aaaaaa;">
+                                                    Ready to jump back into the mix? No password needed — just click the button below to sign in instantly.
+                                                </p>
+
+                                                <!-- CTA Button -->
+                                                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 32px;">
+                                                    <tr>
+                                                        <td align="center">
+                                                            <a href="${url}" style="display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #4a90e2 0%, #2563eb 100%); color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);">
+                                                                Sign in to EchoDeck →
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+
+                                                <!-- Info Box -->
+                                                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 32px; background-color: #1a1a1a; border-radius: 12px;">
+                                                    <tr>
+                                                        <td style="padding: 16px;">
+                                                            <p style="margin: 0; font-size: 12px; color: #777777; line-height: 1.5;">
+                                                                <strong style="color: #999999;">Security Note:</strong> This link expires in 15 minutes and is single-use. If you didn't request this, you can safely ignore this email.
+                                                            </p>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+
+                                                <!-- Footer -->
+                                                <p style="margin: 32px 0 0 0; font-size: 11px; color: #444444; text-align: center; border-top: 1px solid #222222; padding-top: 24px;">
+                                                    &copy; ${new Date().getFullYear()} EchoDeck. Collaborative Music Streaming.
+                                                </p>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
                     `
                 });
             }
@@ -61,6 +103,19 @@ export const authOptions: NextAuthOptions = {
             if (account) {
                 token.accessToken = account.access_token;
                 token.provider = account.provider;
+
+                // If Spotify is being linked or used for sign-in, update User model fields
+                if (account.provider === "spotify") {
+                    await prismaClient.user.update({
+                        where: { id: token.id as string || user?.id },
+                        data: {
+                            spotifyConnected: true,
+                            spotifyAccessToken: account.access_token,
+                            spotifyRefreshToken: account.refresh_token,
+                            spotifyTokenExpiresAt: account.expires_at ? new Date(account.expires_at * 1000) : null
+                        }
+                    });
+                }
             }
 
             if (trigger === "update" && session) {

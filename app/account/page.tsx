@@ -556,24 +556,25 @@ export default function AccountPage() {
                                                     <Unlink className="w-4 h-4" />
                                                 </button>
                                             ) : (
-                                                /* eslint-disable-next-line @next/next/no-html-link-for-pages */
-                                                <a
-                                                    href="/api/auth/spotify-connect"
-                                                    className="text-xs font-bold text-green-500 hover:text-green-400 transition-colors"
+                                                <button
+                                                    onClick={() => {
+                                                        signIn("spotify", { callbackUrl: "/auth/link-success" });
+                                                    }}
+                                                    className="text-xs font-bold text-[#1DB954] hover:text-[#1DB954]/80 transition-colors"
                                                 >
                                                     Connect
-                                                </a>
+                                                </button>
                                             )}
                                         </div>
-                                        <div className={`group relative flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl transition-all ${user.accounts?.some((a: any) => a.provider === "google") ? "hover:bg-white/[0.04]" : "opacity-60"}`}>
+                                        <div className={`group relative flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl transition-all ${user.accounts?.some((a: any) => a.provider === "google") ? "hover:bg-white/[0.04]" : ""}`}>
                                             <div className="flex items-center gap-3">
                                                 <div className="p-2 bg-red-500/10 rounded-lg">
                                                     <Mail className="w-5 h-5 text-red-500" />
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-bold text-white">Google</p>
-                                                    <p className="text-[10px] text-gray-500 font-medium tracking-tight uppercase">
-                                                        {user.accounts?.some((a: any) => a.provider === "google") ? "Connected" : "Linked via Email"}
+                                                    <p className="text-[10px] text-gray-500 font-medium">
+                                                        {user.accounts?.some((a: any) => a.provider === "google") ? "Connected" : "Not connected"}
                                                     </p>
                                                 </div>
                                             </div>
