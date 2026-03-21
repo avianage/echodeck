@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { User, Mail, Shield, Calendar, Music, ExternalLink, Unlink, Edit3, Check, X, Loader2, Users,
     Trash2,
     AlertTriangle,
-    ShieldAlert
+    ShieldAlert,
+    LogOut
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
@@ -301,6 +302,13 @@ export default function AccountPage() {
                                     Admin Dashboard
                                 </Link>
                             )}
+                            <Button
+                                onClick={() => signOut({ callbackUrl: "/" })}
+                                className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-300 hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-2 group w-full sm:w-fit md:hidden"
+                            >
+                                <LogOut className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                                Log Out
+                            </Button>
                         </div>
                     </header>
 

@@ -176,7 +176,7 @@ export function PlayerSection({
                         playing={playing}
                         muted={isMuted}
                         volume={volume}
-                        controls={!pathname.startsWith("/party/")}
+                        controls={false}
                         width="100%"
                         height="100%"
                         style={{ minHeight: '300px' }}
@@ -234,14 +234,11 @@ export function PlayerSection({
                 )}
 
                 {isPaused && (isJoined || !pathname.startsWith("/party/")) && (
-                    <div
-                        className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300"
-                        onClick={onPlayClick}
-                    >
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 pointer-events-none">
                         <div className="relative z-10 flex flex-col items-center gap-4">
                             {!pathname.startsWith("/party/") ? (
-                                <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
-                                    <Play className="fill-white w-10 h-10 ml-1" />
+                                <div className="bg-amber-600/90 px-8 py-3 rounded-full border border-amber-400/50 shadow-2xl">
+                                    <p className="text-xl font-bold tracking-widest uppercase text-white">Paused</p>
                                 </div>
                             ) : (
                                 <div className="bg-blue-600/90 px-8 py-3 rounded-full border border-blue-400/50 shadow-2xl">
@@ -276,9 +273,7 @@ export function PlayerSection({
                 </div>
                 )}
 
-                {pathname.startsWith("/party/") && (
-                    <div className="absolute inset-0 z-10 cursor-default" />
-                )}
+                <div className="absolute inset-0 z-10 cursor-default" />
 
                 <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/40 to-transparent z-20 pointer-events-none">
                     <p className="text-sm sm:text-lg font-semibold text-white line-clamp-2 sm:truncate drop-shadow-lg">{currentVideo.title}</p>
