@@ -68,7 +68,7 @@ RUN npm install --prefix /prisma-cli prisma --no-save --ignore-scripts \
     && chmod +x ./docker-bootstrap.sh
 
 # Add a HEALTHCHECK before switching to nextjs user
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=180s --retries=5 \
   CMD wget -qO- http://localhost:3002/api/health || exit 1
 
 USER nextjs

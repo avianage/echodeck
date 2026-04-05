@@ -34,6 +34,7 @@ const PUBLIC_PATHS = [
     "/auth/link-success",
     "/auth/error",
     "/api/auth",
+    "/api/health",
     "/api/user/check-username",
     "/api/user/setup",
     "/discover",
@@ -58,6 +59,7 @@ export async function proxy(req: NextRequest) {
         'http://localhost:3000',
         'http://localhost:3002',
         'http://127.0.0.1:3000',
+        'http://127.0.0.1:3002',
         nextAuthOrigin
     ].filter(Boolean);
 
