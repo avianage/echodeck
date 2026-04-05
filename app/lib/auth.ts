@@ -232,6 +232,7 @@ export const authOptions: NextAuthOptions = {
         async redirect({ url, baseUrl }) {
             const isInternalHost = (host: string) => 
                 host === 'localhost' || 
+                host === '127.0.0.1' ||
                 !host.includes('.') || 
                 /^[a-f0-9]{8,}$/.test(host.split(':')[0]) || // handle cases with ports in host
                 host.includes(':3002');

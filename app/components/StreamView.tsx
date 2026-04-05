@@ -234,7 +234,7 @@ export default function StreamView({
         if (e && 'preventDefault' in e) e.preventDefault();
         if (!videoLink.trim()) return;
 
-        const isUrl = videoLink.match(YT_REGEX) || videoLink.match(SPOTIFY_TRACK_REGEX) || videoLink.match(PLAYLIST_REGEX);
+        const isUrl = videoLink.match(YT_REGEX) || videoLink.match(SPOTIFY_TRACK_REGEX) || videoLink.match(PLAYLIST_REGEX) || videoLink.match(SPOTIFY_PLAYLIST_REGEX);
 
         if (!isUrl) {
             handleSearch(videoLink);

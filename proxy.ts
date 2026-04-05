@@ -57,6 +57,7 @@ export async function proxy(req: NextRequest) {
         'https://echodeck.avianage.in',
         'http://localhost:3000',
         'http://localhost:3002',
+        'http://127.0.0.1:3000',
         nextAuthOrigin
     ].filter(Boolean);
 
@@ -98,7 +99,7 @@ export async function proxy(req: NextRequest) {
     const purifyUrl = (urlStr: string) => {
         try {
             const url = new URL(urlStr);
-            if (url.port === '3002' || url.hostname === 'localhost' || !url.hostname.includes('.') || /^[a-f0-9]{8,}$/.test(url.hostname)) {
+            if (url.port === '3002' || url.hostname === 'localhost' || url.hostname === '127.0.0.1' || !url.hostname.includes('.') || /^[a-f0-9]{8,}$/.test(url.hostname)) {
                 const publicUrl = new URL(url.pathname + url.search, responseOrigin);
                 return publicUrl.toString();
             }
