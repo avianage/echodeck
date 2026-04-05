@@ -6,6 +6,7 @@ import YouTubeSearchApi from "youtube-search-api";
 import { z } from "zod";
 import { PLAYLIST_REGEX, SPOTIFY_PLAYLIST_REGEX } from "@/app/lib/utils";
 import { getSpotifyApi, getUserSpotifyApi } from "@/app/lib/spotify";
+import { getValidSpotifyToken } from "@/app/lib/spotifyToken";
 import { authOptions } from "@/app/lib/auth";
 import * as _spotifyUrlInfo from "spotify-url-info";
 const spotifyUrlInfo = (_spotifyUrlInfo as any).default || _spotifyUrlInfo;
@@ -142,9 +143,10 @@ export async function POST(req: NextRequest) {
             } else if (spotMatch) {
                 try {
                     const playlistIdFromUrl = spotMatch[1];
+                    const spotifyToken = await getValidSpotifyToken(session.user.id);
                     const { title: playlistTitle, tracks, error } = await getAllSpotifyPlaylistTracks(
                         playlistIdFromUrl,
-                        session?.accessToken
+                        spotifyToken ?? undefined
                     );
 
                     if (error) {
