@@ -14,7 +14,6 @@
 - **react-player, react-youtube, react-lite-youtube-embed**: Cross-platform embedded media playback.
 - **yt-dlp-exec, youtube-search-api**: Server-side YouTube resolution and track search.
 - **spotify-web-api-node, spotify-url-info**: Spotify track metadata fetching and resolution.
-- **pusher, pusher-js**: Real-time event broadcasting (SSE migration).
 - **axios, cheerio**: HTTP client and web scraping for fallback metadata resolution.
 
 ## ✅ Implemented Features
@@ -53,7 +52,7 @@
 - **Stream lifecycle**: A stream's active state and sync are strictly gated by the creator's presence heartbeat.
 - **Auth flow**: Hybrid approach using passwordless magic links (via Resend) combined with Spotify account linking for creator tools.
 - **Guest discovery**: To increase conversions, guest discovery displays blurred cards with an inline sign-in modal rather than hard-blocking access to the page.
-- **Sync strategy**: Currently uses database polling for state synchronization, with a migration path to Server-Sent Events (SSE) via the introduced Pusher dependency.
+- **Sync strategy**: Real-time session state is delivered via native Server-Sent Events (SSE). The server maintains an active SSE connection per stream session and pushes `sync` and `keepalive` events to connected clients. A database polling fallback runs alongside SSE to handle reconnections and clients that miss events during brief disconnects.
 
 ## 🔧 Configuration & Environment
 - `DATABASE_URL`: PostgreSQL connection string.
@@ -76,10 +75,10 @@
   - **`server.js` vs `next start`**: The Docker container starts via `docker-bootstrap.sh`, which explicitly executes `node server.js` from the `.next/standalone` output rather than `npm start`.
 
 ## 🐛 Known Issues / In Progress
-- **Real-time Engine Migration**: Transitioning from the current database-backed polling sync engine to an SSE/WebSocket model (Pusher).
 - **Mobile Playback Layouts**: Ongoing refinements to the fixed bottom navigation bar and inline video player sizing on mobile devices under heavy queue loads.
 
 ## 📋 Changelog (Latest Changes)
+- **Real-time SSE Engine**: Replaced DB-only polling with a native SSE implementation. The server pushes live queue and playback events to clients, with DB polling retained as a fallback for reconnection resilience.
 - **Health Checks**: Added `/api/health` endpoint for Docker container status monitoring.
 - **Spotify Enhancements**: Fixed playlist regex issues, improved streaming resolution accuracy, and implemented Spotify account connection.
 - **UI & Layout Fixes**: Addressed multiple mobile UI bugs affecting video players and the sign-up page.
