@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
-import ReactPlayer from "react-player";
+import { YouTubePlayer } from "./YouTubePlayer";
 import Image from "next/image";
-import { Lock, Users, CheckCircle, XCircle, Play, Pause, VolumeX, Volume2 } from "lucide-react";
+import { Lock, Play, VolumeX, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Video {
@@ -34,18 +34,17 @@ interface PlayerSectionProps {
     currentUserId: string | null;
     accessStatus: string | null;
     volume: number;
-    reactPlayerRef: React.RefObject<ReactPlayer | null>;
-    onReady: () => void;
+    playerRef: React.RefObject<any>;
+    onReady: (player: any) => void;
     onPlay: () => void;
     onPause: () => void;
     onEnded: () => void;
-    onError: (err: any) => void;
+    onError: (err: number) => void;
     onGoLive: () => void;
     onMuteToggle: () => void;
     onVolumeChange: (v: number) => void;
     onPlayClick: () => void;
     onRequestAccess: () => void;
-    isResolving: boolean;
 }
 
 export function PlayerSection({
@@ -62,7 +61,7 @@ export function PlayerSection({
     currentUserId,
     accessStatus,
     volume,
-    reactPlayerRef,
+    playerRef,
     onReady,
     onPlay,
     onPause,
@@ -73,38 +72,21 @@ export function PlayerSection({
     onVolumeChange,
     onPlayClick,
     onRequestAccess,
-    isResolving
 }: PlayerSectionProps) {
 
     // Enforce 1x playback speed aggressively against extensions
     useEffect(() => {
         const interval = setInterval(() => {
-            // Force native DOM elements (audio/video)
-            const mediaElements = document.querySelectorAll('video, audio');
-            mediaElements.forEach((el) => {
-                const media = el as HTMLMediaElement;
-                if (media.playbackRate !== 1) {
-                    media.playbackRate = 1;
-                }
-                if (media.defaultPlaybackRate !== 1) {
-                    media.defaultPlaybackRate = 1;
-                }
-            });
-
-            // Force ReactPlayer (YouTube Iframe API)
-            if (reactPlayerRef?.current) {
-                const internalPlayer = reactPlayerRef.current.getInternalPlayer();
-                if (internalPlayer && typeof internalPlayer.getPlaybackRate === 'function' && typeof internalPlayer.setPlaybackRate === 'function') {
-                    const currentRate = internalPlayer.getPlaybackRate();
-                    if (currentRate !== 1) {
-                        internalPlayer.setPlaybackRate(1);
-                    }
+            if (playerRef?.current && typeof playerRef.current.getPlaybackRate === 'function') {
+                const currentRate = playerRef.current.getPlaybackRate();
+                if (currentRate !== 1) {
+                    playerRef.current.setPlaybackRate(1);
                 }
             }
-        }, 500); // Fast interval to immediately counter extensions
+        }, 500);
 
         return () => clearInterval(interval);
-    }, [reactPlayerRef]);
+    }, [playerRef]);
 
     if (!currentVideo) {
         return (
@@ -141,66 +123,24 @@ export function PlayerSection({
     return (
         <div className="w-full relative">
             <div className="relative w-full aspect-video md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
-                {isResolving && (
-                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm gap-4">
-                        <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
-                        <p className="text-white font-semibold text-lg">Resolving stream...</p>
-                        <p className="text-gray-400 text-sm">Bypassing embed restriction</p>
-                    </div>
-                )}
-                {resolvedUrl ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-black gap-4 p-6">
-                        <div className="relative w-full h-64">
-                            <Image
-                                src={currentVideo.bigImg}
-                                alt={currentVideo.title}
-                                fill
-                                sizes="(max-width: 768px) 100vw, 400px"
-                                className="object-contain rounded-xl opacity-80"
-                            />
-                        </div>
-                        <audio
-                            ref={(el) => { if (el) el.volume = volume; }}
-                            src={resolvedUrl}
-                            autoPlay={playing}
-                            controls
-                            className="w-full"
-                            onEnded={onEnded}
-                            onError={() => onError(null)}
-                        />
-                    </div>
-                ) : (
-                    <ReactPlayer
-                        ref={reactPlayerRef}
-                        url={`https://www.youtube.com/watch?v=${currentVideo.extractedId}`}
-                        playing={playing}
-                        muted={isMuted}
-                        volume={volume}
-                        controls={false}
-                        width="100%"
-                        height="100%"
-                        style={{ minHeight: '300px' }}
-                        className="aspect-video min-h-[300px] md:min-h-[450px]"
-                        config={{
-                            youtube: {
-                                playerVars: {
-                                    rel: 0,
-                                    modestbranding: 1,
-                                    iv_load_policy: 3,
-                                    playsinline: 1,
-                                    enablejsapi: 1,
-                                    autoplay: 0,
-                                    origin: typeof window !== 'undefined' ? window.location.origin : ''
-                                }
-                            }
-                        }}
-                        onReady={onReady}
-                        onPlay={onPlay}
-                        onPause={onPause}
-                        onEnded={onEnded}
-                        onError={onError}
-                    />
-                )}
+                <YouTubePlayer
+                    videoId={currentVideo.extractedId}
+                    isHost={currentUserId === creatorId}
+                    playing={playing}
+                    volume={volume}
+                    muted={isMuted}
+                    onReady={(player) => {
+                        playerRef.current = player;
+                        onReady(player);
+                    }}
+                    onStateChange={(event) => {
+                        const state = event.data;
+                        if (state === (window as any).YT.PlayerState.PLAYING) onPlay();
+                        if (state === (window as any).YT.PlayerState.PAUSED) onPause();
+                        if (state === (window as any).YT.PlayerState.ENDED) onEnded();
+                    }}
+                    onError={onError}
+                />
 
                 {!isJoined && (
                     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4">
@@ -227,7 +167,7 @@ export function PlayerSection({
                                     : "bg-gray-800 text-gray-500 cursor-not-allowed"
                                     }`}
                             >
-                                {isPlayerReady ? (pathname.startsWith("/party/") ? "GO LIVE" : "START SESSION") : "LOADING VIDEO..."}
+                                {isPlayerReady ? (pathname.startsWith("/party/") ? "JOIN STREAM" : "START SESSION") : "LOADING VIDEO..."}
                             </Button>
                         </div>
                     </div>

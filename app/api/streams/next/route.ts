@@ -34,8 +34,11 @@ export async function GET() {
 
     const mostUpvotedStream = await prismaClient.stream.findFirst({
         where: {
-            userId: userId,
-            played: false
+            userId: userId || "",
+            played: false,
+            extractedId: {
+                notIn: (await prismaClient.blockedVideo.findMany({ select: { videoId: true } })).map((v: { videoId: string }) => v.videoId)
+            }
         },
         orderBy: [
             {
@@ -56,14 +59,14 @@ export async function GET() {
     await Promise.all([
         prismaClient.currentStream.upsert({
             where: {
-                userId: userId
+                userId: userId || ""
             },
             update: {
-                userId: userId,
+                userId: userId || "",
                 streamId: mostUpvotedStream.id
             },
             create: {
-                userId: userId,
+                userId: userId || "",
                 streamId: mostUpvotedStream.id
             }
         }),
@@ -76,11 +79,10 @@ export async function GET() {
                 playedTs: new Date()
             }
         }),
-        broadcastEvent(userId, "SONG_SKIPPED_BY_CREATOR", `Skipped to: ${mostUpvotedStream.title}`)
+        broadcastEvent(userId || "", "SONG_SKIPPED_BY_CREATOR", `Skipped to: ${mostUpvotedStream.title}`)
     ]);
 
     return NextResponse.json({
         stream: mostUpvotedStream
     });
 }
-

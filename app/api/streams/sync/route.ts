@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
 import { getStreamRole } from "@/app/lib/getSessionRole";
 import { hasPermission } from "@/app/lib/permissions";
+import { broadcastToStream } from "@/app/lib/sseManager";
 
 const SyncSchema = z.object({
     creatorId: z.string(),
@@ -47,6 +48,15 @@ export async function POST(req: NextRequest) {
                 currentTime: data.currentTime,
                 isPaused: data.type === "pause",
             },
+        });
+
+        // Push the state change immediately to all connected SSE viewers
+        broadcastToStream(data.creatorId, {
+            currentTime: data.currentTime,
+            computedTime: data.currentTime, // no staleness — just written
+            isPaused: data.type === "pause",
+            updatedAt: new Date().toISOString(),
+            type: "sync"
         });
 
         return NextResponse.json({ message: "Sync successful" });

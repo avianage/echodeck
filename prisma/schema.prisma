@@ -253,3 +253,8 @@ model MaintenanceMode {
     updatedBy  String
     updatedAt  DateTime  @updatedAt
 }
+
+model BlockedVideo {
+    videoId    String   @id
+    createdAt  DateTime @default(now())
+}

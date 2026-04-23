@@ -159,10 +159,13 @@ export default function StreamView({
         setActivityLogs(prev => [{ type, message, timestamp: Date.now() }, ...prev].slice(0, 10));
     };
 
-    const reactPlayerRef = useRef<ReactPlayer | null>(null);
+    const playerRef = useRef<any>(null);
     const pathname = usePathname();
     const isFixingRestrictedRef = useRef(false);
     const lastSeekRef = useRef<number>(0);
+    const lastSyncPushRef = useRef<number>(0);
+    // true while an SSE connection is healthy — disables the fallback poll
+    const sseActiveRef = useRef(false);
 
 
     const refreshStreams = useCallback(async (isInitial: boolean = false) => {
@@ -355,21 +358,23 @@ export default function StreamView({
             const isCreator = !pathname.startsWith("/party/");
             try {
                     if (isCreator) {
-                        // Streamer pushes state to DB
-                        if (reactPlayerRef.current) {
-                            const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                        // Streamer pushes state to DB every 2s as a fallback
+                        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+                            const currentTime = playerRef.current.getCurrentTime() || 0;
+                            const isPausedNow = isPaused || !playing;
+                            
                             await fetch("/api/streams/heartbeat", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
                                     creatorId,
                                     currentTime,
-                                    isPaused: !playing // Use actual state
+                                    isPaused: isPausedNow
                                 })
                             });
                         }
-                    } else if (isJoined) {
-                    // Listener pulls state from DB
+                    } else if (isJoined && !sseActiveRef.current) {
+                    // Fallback: Listener polls DB when SSE is not connected
                     const res = await fetch("/api/streams/heartbeat", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -395,8 +400,8 @@ export default function StreamView({
 
                     const data = await res.json();
 
-                    if (data.currentTime !== undefined && reactPlayerRef.current) {
-                        const myTime = reactPlayerRef.current.getCurrentTime();
+                    if (data.currentTime !== undefined && playerRef.current) {
+                        const myTime = playerRef.current.getCurrentTime();
                         const staleness = (Date.now() - new Date(data.updatedAt).getTime()) / 1000;
 
                         // 5-second offline detection for abrupt disconnects
@@ -415,10 +420,10 @@ export default function StreamView({
 
                         // Force seek if listener is > 2s off (including staleness)
                         const now = Date.now();
-                        if (Math.abs(myTime - compensatedTime) > 2 && now - lastSeekRef.current > 5000) {
+                        if (Math.abs(myTime - compensatedTime) > 2 && now - lastSeekRef.current > 2000) {
                             console.log(`📡 Syncing with staleness compensation: +${staleness.toFixed(2)}s`);
                             lastSeekRef.current = now;
-                            reactPlayerRef.current.seekTo(compensatedTime, 'seconds');
+                            playerRef.current.seekTo(compensatedTime, true);
                         }
 
                         // Sync Play/Pause
@@ -445,9 +450,9 @@ export default function StreamView({
                         }
                         setStreamIsPublic(data.isPublic);
 
-                        if (reactPlayerRef.current && !data.isPaused) {
-                            const duration = reactPlayerRef.current.getDuration();
-                            const current = reactPlayerRef.current.getCurrentTime();
+                        if (playerRef.current && !data.isPaused && typeof playerRef.current.getDuration === 'function') {
+                            const duration = playerRef.current.getDuration();
+                            const current = playerRef.current.getCurrentTime();
                             if (duration > 0 && duration - current < 3) {
                                 playNext();
                             }
@@ -512,12 +517,91 @@ export default function StreamView({
                     return newCount;
                 });
             }
-        }, 2000); // Check every 2s for "snappy" sync
+        }, pathname.startsWith("/party/") ? 500 : 2000);
 
         return () => {
             clearInterval(heartbeatInterval);
         };
     }, [creatorId, pathname, isJoined, playing, currentVideo, refreshStreams, heartbeatFailCount]);
+
+    //
+    // SSE connection for viewers — replaces the 500ms poll when healthy.
+    // Falls back to the heartbeat poll automatically when EventSource errors.
+    //
+    useEffect(() => {
+        const isViewer = pathname.startsWith("/party/");
+        if (!isViewer || !isJoined) return;
+
+        let es: EventSource | null = null;
+
+        const connect = () => {
+            es = new EventSource(`/api/streams/${creatorId}/events`);
+
+            es.onopen = () => {
+                console.log("🔴 SSE connected");
+                sseActiveRef.current = true;
+            };
+
+            es.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (!playerRef.current) return;
+
+                    const myTime = playerRef.current.getCurrentTime?.() ?? 0;
+                    const staleness = (Date.now() - new Date(data.updatedAt).getTime()) / 1000;
+
+                    // Offline detection — if updatedAt is stale the host dropped
+                    if (staleness > 10) {
+                        toast.error("The streamer is offline.", { toastId: "offline-kick", autoClose: false });
+                        setTimeout(() => window.location.reload(), 2000);
+                        return;
+                    }
+
+                    const compensatedTime = data.isPaused
+                        ? data.currentTime
+                        : data.currentTime + staleness;
+
+                    // Drift correction
+                    const now = Date.now();
+                    if (Math.abs(myTime - compensatedTime) > 2 && now - lastSeekRef.current > 2000) {
+                        console.log(`📡 [SSE] Drift corrected: ${(myTime - compensatedTime).toFixed(2)}s`);
+                        lastSeekRef.current = now;
+                        playerRef.current.seekTo(compensatedTime, true);
+                    }
+
+                    // Play/Pause sync
+                    if (data.isPaused !== undefined) {
+                        setPlaying(!data.isPaused);
+                        setIsPaused(data.isPaused);
+                    }
+
+                    // Song changed remotely
+                    if (data.stream && currentVideo?.id !== data.stream.id) {
+                        console.log("🎵 [SSE] Song changed remotely, refreshing...");
+                        refreshStreams();
+                    }
+                } catch (err) {
+                    console.error("[SSE] Failed to parse message:", err);
+                }
+            };
+
+            es.onerror = () => {
+                // EventSource will auto-reconnect; mark SSE inactive so the
+                // fallback heartbeat poll takes over during the gap.
+                console.warn("⚠️ SSE connection lost — falling back to polling");
+                sseActiveRef.current = false;
+                // Don't close; browser reconnects automatically.
+            };
+        };
+
+        connect();
+
+        return () => {
+            console.log("🔴 SSE disconnected");
+            sseActiveRef.current = false;
+            es?.close();
+        };
+    }, [creatorId, pathname, isJoined, currentVideo?.id]);
 
     // useEffect(() => {
     //     if (currentVideo?.title) {
@@ -535,11 +619,11 @@ export default function StreamView({
 
 
 
-    // Apply cached sync (from Pusher) once player is ready
+    // Apply cached sync once player is ready
     useEffect(() => {
-        if (lastSync && reactPlayerRef.current) {
+        if (lastSync && playerRef.current) {
             console.log("🎯 Applying last cached sync:", lastSync);
-            reactPlayerRef.current.seekTo(lastSync.currentTime, 'seconds');
+            playerRef.current.seekTo(lastSync.currentTime, true);
             if (lastSync.type === "play") {
                 setPlaying(true);
                 setIsPaused(false);
@@ -638,24 +722,16 @@ export default function StreamView({
     };
 
 
-    const resolveStream = async (videoId: string) => {
+    const blockVideo = async (videoId: string) => {
         try {
-            setIsResolving(true);
-            console.log("📡 SSR Resolution: Attempting to bypass restriction for:", videoId);
-            const res = await fetch(`/api/streams/resolve?videoId=${videoId}`);
-            const data = await res.json();
-            if (data.url) {
-                console.log("✅ SSR Resolution: Success! Using direct stream.");
-                setResolvedUrl(`/api/streams/proxy?url=${encodeURIComponent(data.url)}`);
-            } else {
-                throw new Error(data.error || "No URL returned");
-            }
+            await fetch("/api/streams/block", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ videoId })
+            });
+            console.log(`🚫 Video ${videoId} blacklisted.`);
         } catch (err) {
-            console.error("❌ SSR Resolution: Failed", err);
-            toast.error("This video cannot be played. Skipping...");
-            playNext();
-        } finally {
-            setIsResolving(false);
+            console.error("Failed to block video:", err);
         }
     };
 
@@ -871,7 +947,12 @@ export default function StreamView({
 
 
     const handleGoLive = async () => {
-        if (!reactPlayerRef.current) return;
+        if (!playerRef.current) return;
+
+        // Autoplay compliance: call playVideo directly within the user gesture handler
+        if (typeof playerRef.current.playVideo === 'function') {
+            playerRef.current.playVideo();
+        }
 
         setIsJoined(true);
 
@@ -887,7 +968,7 @@ export default function StreamView({
                 const data = await res.json();
                 if (data.currentTime !== undefined) {
                     console.log("🎯 Immediate sync on join:", data.currentTime);
-                    reactPlayerRef.current.seekTo(data.currentTime, 'seconds');
+                    playerRef.current.seekTo(data.currentTime, true);
                     setPlaying(!data.isPaused);
                     setIsPaused(data.isPaused);
                 }
@@ -902,7 +983,7 @@ export default function StreamView({
         // Final sync attempt (Pusher fallback)
         if (lastSync) {
             console.log("Applying final cached sync on join:", lastSync);
-            reactPlayerRef.current.seekTo(lastSync.currentTime, 'seconds');
+            playerRef.current.seekTo(lastSync.currentTime, true);
             if (lastSync.type === "play") setPlaying(true);
             else setPlaying(false);
             setLastSync(null);
@@ -1153,9 +1234,9 @@ export default function StreamView({
                                             currentUserId={currentUserId}
                                             accessStatus={accessStatus}
                                             volume={volume}
-                                            reactPlayerRef={reactPlayerRef}
-                                            onReady={() => {
-                                                console.log('✅ ReactPlayer Ready');
+                                            playerRef={playerRef}
+                                            onReady={(player) => {
+                                                console.log('✅ YouTube Player Ready');
                                                 setIsPlayerReady(true);
                                             }}
                                             onPlay={() => {
@@ -1163,8 +1244,8 @@ export default function StreamView({
                                                 if (!isJoined && !isCreator) return;
                                                 setIsPaused(false);
                                                 setPlaying(true);
-                                                if (isCreator && reactPlayerRef.current) {
-                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                if (isCreator && playerRef.current) {
+                                                    const currentTime = playerRef.current.getCurrentTime() || 0;
                                                     fetch("/api/streams/sync", {
                                                         method: "POST",
                                                         headers: { "Content-Type": "application/json" },
@@ -1177,8 +1258,8 @@ export default function StreamView({
                                                 if (!isJoined && !isCreator) return;
                                                 setIsPaused(true);
                                                 setPlaying(false);
-                                                if (isCreator && reactPlayerRef.current) {
-                                                    const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                if (isCreator && playerRef.current) {
+                                                    const currentTime = playerRef.current.getCurrentTime() || 0;
                                                     fetch("/api/streams/sync", {
                                                         method: "POST",
                                                         headers: { "Content-Type": "application/json" },
@@ -1192,7 +1273,7 @@ export default function StreamView({
                                             }}
                                             onError={(err) => {
                                                 if (!currentVideo) return;
-                                                console.warn('⚠️ ReactPlayer error:', err, 'for ID:', currentVideo.extractedId);
+                                                console.warn('⚠️ YouTube Player error:', err, 'for ID:', currentVideo.extractedId);
                                                 
                                                 const isEmbedRestricted = err === 101 || err === 150;
                                                 const isInvalidVideo = err === 2 || err === 100;
@@ -1204,14 +1285,9 @@ export default function StreamView({
                                                 }
 
                                                 if (isEmbedRestricted) {
-                                                    if (!resolvedUrl) {
-                                                        toast.info("Embed restricted. Resolving stream...");
-                                                        resolveStream(currentVideo.extractedId);
-                                                    } else {
-                                                        console.log("🔄 Restriction persists on resolved URL, skipping.");
-                                                        toast.error("Playback failed. Skipping...");
-                                                        playNext();
-                                                    }
+                                                    toast.error("Embed restricted for this video. Skipping...");
+                                                    blockVideo(currentVideo.extractedId);
+                                                    playNext();
                                                     return;
                                                 }
 
@@ -1229,7 +1305,6 @@ export default function StreamView({
                                                 if (!pathname.startsWith("/party/")) setPlaying(true);
                                             }}
                                             onRequestAccess={handleRequestAccess}
-                                            isResolving={isResolving}
                                         />
                                     )}
                                 </CardContent>
@@ -1240,36 +1315,29 @@ export default function StreamView({
                                     {currentVideo && (
                                         <Button
                                             onClick={() => {
-                                                if (reactPlayerRef.current) {
-                                                    const internalPlayer = reactPlayerRef.current.getInternalPlayer();
                                                     if (playing) {
-                                                        if (internalPlayer && typeof internalPlayer.pauseVideo === 'function') {
-                                                            internalPlayer.pauseVideo();
-                                                        }
+                                                        playerRef.current.pauseVideo();
                                                         setPlaying(false);
                                                         setIsPaused(true);
                                                         // Trigger manual sync
-                                                        const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                        const currentTime = playerRef.current.getCurrentTime() || 0;
                                                         fetch("/api/streams/sync", {
                                                             method: "POST",
                                                             headers: { "Content-Type": "application/json" },
                                                             body: JSON.stringify({ creatorId, type: "pause", currentTime })
                                                         }).catch(console.error);
                                                     } else {
-                                                        if (internalPlayer && typeof internalPlayer.playVideo === 'function') {
-                                                            internalPlayer.playVideo();
-                                                        }
+                                                        playerRef.current.playVideo();
                                                         setPlaying(true);
                                                         setIsPaused(false);
                                                         // Trigger manual sync
-                                                        const currentTime = reactPlayerRef.current.getCurrentTime() || 0;
+                                                        const currentTime = playerRef.current.getCurrentTime() || 0;
                                                         fetch("/api/streams/sync", {
                                                             method: "POST",
                                                             headers: { "Content-Type": "application/json" },
                                                             body: JSON.stringify({ creatorId, type: "play", currentTime })
                                                         }).catch(console.error);
                                                     }
-                                                }
                                             }}
                                             className="w-full sm:flex-1 h-11 sm:h-12 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl"
                                         >

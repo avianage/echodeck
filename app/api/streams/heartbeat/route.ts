@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/app/lib/auth";
 import { getStreamRole, isOwner } from "@/app/lib/getSessionRole";
 import { hasPermission } from "@/app/lib/permissions";
+import { broadcastToStream } from "@/app/lib/sseManager";
 
 const HeartbeatSchema = z.object({
     creatorId: z.string(),
@@ -68,6 +69,18 @@ export async function POST(req: NextRequest) {
                         isPaused: data.isPaused ?? false,
                     },
                 });
+
+            // Push state immediately to all connected SSE viewers
+            const serverNow = Date.now();
+            const staleness = 0; // host just wrote — no staleness
+            broadcastToStream(data.creatorId, {
+                currentTime: data.currentTime,
+                computedTime: data.currentTime,
+                isPaused: data.isPaused ?? false,
+                updatedAt: new Date().toISOString(),
+                type: "sync"
+            });
+
             return NextResponse.json({ message: "Heartbeat updated" });
         }
 

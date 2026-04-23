@@ -99,7 +99,7 @@ async function getAllSpotifyPlaylistTracks(playlistId: string, sessionAccessToke
                 name: t.name,
                 artists: t.artists || [{ name: t.artist || "Unknown Artist" }],
                 duration_ms: t.duration_ms || t.duration || 0,
-                external_urls: { spotify: t.external_urls?.spotify || `https://open.spotify.com/track/${t.id}` },
+                external_urls: { spotify: t.external_urls?.spotify || (t.id ? `https://open.spotify.com/track/${t.id}` : "") },
                 uri: t.uri || `spotify:track:${t.id}`,
                 album: { images: t.album?.images || [] }
             }
@@ -190,17 +190,19 @@ export async function POST(req: NextRequest) {
                                 (id ? `https://open.spotify.com/track/${id}` : "") ||
                                 spotifyTrackUrlFromUri(track?.uri);
 
+                            const validSpotifyUrl = spotifyUrl && !spotifyUrl.includes("undefined") && !spotifyUrl.includes("null") ? spotifyUrl : "";
+
                             return {
                                 id,
                                 title: `${name} by ${artistNames || "Unknown"}`,
                                 thumbnail,
                                 duration,
                                 isSpotify: true,
-                                url: spotifyUrl,
-                                originalSpotifyUrl: spotifyUrl,
+                                url: validSpotifyUrl,
+                                originalSpotifyUrl: validSpotifyUrl,
                             };
                         })
-                        .filter(Boolean) as any[];
+                        .filter((v: any) => v !== null && (v.url !== "" || v.id)) as any[];
 
                     // For each Spotify track, try to resolve a YouTube video
                     const resolvedVideos = await Promise.all(

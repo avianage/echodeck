@@ -249,6 +249,17 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: "Creator not found" }, { status: 404 });
         }
 
+        // Check if video is blacklisted
+        const isBlocked = await prismaClient.blockedVideo.findUnique({
+            where: { videoId: extractedId }
+        });
+
+        if (isBlocked) {
+            return NextResponse.json({ 
+                message: "This video is not supported or has been blacklisted due to embed restrictions." 
+            }, { status: 400 });
+        }
+
         // Check access if private
         if (!creator.isPublic && user.id !== data.creatorId) {
             const access = await (prismaClient as any).streamAccess.findUnique({
