@@ -1,44 +1,43 @@
 export const dynamic = 'force-dynamic';
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/lib/auth";
-import { prismaClient } from "@/app/lib/db";
+import { NextResponse, NextRequest } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/lib/auth';
+import { prismaClient } from '@/app/lib/db';
 
-export async function GET(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id;
+export async function GET(_req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id as string;
 
-    if (!userId) {
-        return NextResponse.json({ message: "Unauthenticated" }, { status: 401 });
-    }
+  if (!userId) {
+    return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
+  }
 
-    const user = await prismaClient.user.findUnique({
-        where: { id: userId },
+  const user = await prismaClient.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      displayName: true,
+      image: true,
+      spotifyConnected: true,
+      platformRole: true,
+      allowFriendRequests: true,
+      partyCode: true,
+      isBanned: true,
+      bannedUntil: true,
+      banReason: true,
+      accounts: {
         select: {
-            id: true,
-            email: true,
-            username: true,
-            displayName: true,
-            image: true,
-            spotifyConnected: true,
-            platformRole: true,
-            allowFriendRequests: true,
-            partyCode: true,
-            isBanned: true,
-            bannedUntil: true,
-            banReason: true,
-            accounts: {
-                select: {
-                    provider: true
-                }
-            }
-        }
-    });
+          provider: true,
+        },
+      },
+    },
+  });
 
-    if (!user) {
-        return NextResponse.json({ message: "User not found" }, { status: 404 });
-    }
+  if (!user) {
+    return NextResponse.json({ message: 'User not found' }, { status: 404 });
+  }
 
-    return NextResponse.json({ user });
+  return NextResponse.json({ user });
 }
-

@@ -1,14 +1,10 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: 'standalone',
   reactCompiler: true,
-  allowedDevOrigins: ['127.0.0.1'],
-  serverExternalPackages: [
-    "yt-dlp-exec",
-    "@prisma/client",
-    "prisma"
-  ],
+  allowedDevOrigins: ['127.0.0.1', '192.168.0.99', 'test.avianage.in'],
+  serverExternalPackages: ['yt-dlp-exec', '@prisma/client', 'prisma'],
   images: {
     remotePatterns: [
       {

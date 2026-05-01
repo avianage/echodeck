@@ -1,0 +1,383 @@
+app/account/page.tsx(235,23): error TS18047: 'userData' is possibly 'null'.
+app/account/page.tsx(235,42): error TS2339: Property 'filter' does not exist on type '{}'.
+app/account/page.tsx(308,26): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(308,61): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(322,21): error TS2339: Property 'username' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'username' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(324,39): error TS2339: Property 'username' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'username' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(331,21): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(365,27): error TS2322: Type '{}' is not assignable to type 'string | Blob | undefined'.
+app/account/page.tsx(366,37): error TS2339: Property 'displayName' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'displayName' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(373,27): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(377,56): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(379,60): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(384,31): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(422,58): error TS2339: Property 'displayName' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'displayName' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(431,39): error TS2339: Property 'displayName' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'displayName' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(475,55): error TS2339: Property 'username' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'username' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(484,40): error TS2339: Property 'username' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'username' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(502,74): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/account/page.tsx(519,86): error TS2339: Property 'id' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'id' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(526,51): error TS2339: Property 'id' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'id' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(528,89): error TS2339: Property 'id' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'id' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(553,25): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/account/page.tsx(556,50): error TS2345: Argument of type 'Record<string, unknown>' is not assignable to parameter of type 'string'.
+app/account/page.tsx(605,27): error TS2339: Property 'platformRole' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'platformRole' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(677,35): error TS2339: Property 'spotifyConnected' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'spotifyConnected' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(682,29): error TS2339: Property 'spotifyConnected' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'spotifyConnected' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(702,160): error TS2339: Property 'accounts' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'accounts' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(711,35): error TS2339: Property 'accounts' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'accounts' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/account/page.tsx(720,29): error TS2339: Property 'accounts' does not exist on type 'Record<string, unknown> | { name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+  Property 'accounts' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/admin/page.tsx(45,7): error TS2304: Cannot find name 'router'.
+app/admin/page.tsx(63,9): error TS2304: Cannot find name 'router'.
+app/admin/page.tsx(208,48): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+app/admin/page.tsx(253,11): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/admin/page.tsx(256,43): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type '{}' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type '{}' is not assignable to parameter of type 'string | number'.
+app/admin/page.tsx(272,17): error TS2322: Type 'Record<string, unknown>[]' is not assignable to type 'User[]'.
+  Type 'Record<string, unknown>' is missing the following properties from type 'User': id, username, email, platformRole, and 2 more.
+app/admin/page.tsx(275,35): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<Record<string, unknown> | null>'.
+  Type 'User' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'User'.
+app/admin/page.tsx(296,17): error TS2322: Type '(user: Record<string, unknown>) => Promise<void>' is not assignable to type '(user: User) => void'.
+  Types of parameters 'user' and 'user' are incompatible.
+    Type 'User' is not assignable to type 'Record<string, unknown>'.
+      Index signature for type 'string' is missing in type 'User'.
+app/admin/page.tsx(310,17): error TS2322: Type 'Record<string, unknown>[]' is not assignable to type 'Stream[]'.
+  Type 'Record<string, unknown>' is missing the following properties from type 'Stream': id, title, isLive, viewerCount, user
+app/admin/page.tsx(323,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/admin/delete-user/route.ts(14,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/admin/maintenance/route.ts(69,9): error TS2322: Type 'unknown' is not assignable to type 'string | StringFieldUpdateOperationsInput | undefined'.
+app/api/admin/maintenance/route.ts(77,9): error TS2322: Type 'unknown' is not assignable to type 'string'.
+app/api/admin/maintenance/route.ts(87,46): error TS2322: Type 'unknown' is not assignable to type 'string | StringFieldUpdateOperationsInput | undefined'.
+app/api/admin/streams/route.ts(13,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/admin/streams/route.ts(17,7): error TS2367: This comparison appears to be unintentional because the types 'Record<string, unknown>' and 'string' have no overlap.
+app/api/admin/streams/route.ts(17,8): error TS2352: Conversion of type 'string | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'string' is not comparable to type 'Record<string, unknown>'.
+app/api/admin/users/route.ts(13,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/admin/users/route.ts(17,7): error TS2367: This comparison appears to be unintentional because the types 'Record<string, unknown>' and 'string' have no overlap.
+app/api/admin/users/route.ts(17,8): error TS2352: Conversion of type 'string | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'string' is not comparable to type 'Record<string, unknown>'.
+app/api/auth/disconnect-provider/route.ts(45,18): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/auth/spotify-connect/route.ts(21,38): error TS2345: Argument of type '{ client_id: string; response_type: string; redirect_uri: string; scope: string; state: {}; }' is not assignable to parameter of type 'string | URLSearchParams | Record<string, string> | string[][] | undefined'.
+  Types of property 'state' are incompatible.
+    Type '{}' is not assignable to type 'string'.
+app/api/auth/spotify-disconnect/route.ts(16,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/friends/activity/route.ts(45,18): error TS18046: 'friend' is of type 'unknown'.
+app/api/friends/activity/route.ts(58,13): error TS18046: 'friend' is of type 'unknown'.
+app/api/friends/activity/route.ts(59,19): error TS18046: 'friend' is of type 'unknown'.
+app/api/friends/activity/route.ts(60,22): error TS18046: 'friend' is of type 'unknown'.
+app/api/friends/activity/route.ts(62,16): error TS18046: 'friend' is of type 'unknown'.
+app/api/streams/[streamId]/events/route.ts(40,26): error TS2571: Object is of type 'unknown'.
+app/api/streams/[streamId]/events/route.ts(40,27): error TS2352: Conversion of type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
+app/api/streams/access/route.ts(28,22): error TS2345: Argument of type 'string' is not assignable to parameter of type 'StreamRole'.
+app/api/streams/access/route.ts(79,26): error TS2345: Argument of type 'string' is not assignable to parameter of type 'StreamRole'.
+app/api/streams/clear/route.ts(14,36): error TS2345: Argument of type '{} | null' is not assignable to parameter of type 'string | null'.
+  Type '{}' is not assignable to type 'string'.
+app/api/streams/clear/route.ts(22,7): error TS2322: Type '{} | null' is not assignable to type 'string | StringFilter<"Stream"> | undefined'.
+  Type 'null' is not assignable to type 'string | StringFilter<"Stream"> | undefined'.
+app/api/streams/fix-video/route.ts(61,13): error TS2322: Type 'VideoDetails' is not assignable to type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'VideoDetails'.
+app/api/streams/fix-video/route.ts(62,46): error TS2339: Property 'thumbnails' does not exist on type '{}'.
+app/api/streams/fix-video/route.ts(100,61): error TS2339: Property 'message' does not exist on type '{}'.
+app/api/streams/heartbeat/route.ts(134,9): error TS2367: This comparison appears to be unintentional because the types 'Record<string, unknown>' and 'string' have no overlap.
+app/api/streams/heartbeat/route.ts(134,10): error TS2352: Conversion of type 'string' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+app/api/streams/metadata/route.ts(25,26): error TS2345: Argument of type 'Record<string, unknown>' is not assignable to parameter of type 'StreamRole'.
+app/api/streams/metadata/route.ts(25,26): error TS2352: Conversion of type 'string' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+app/api/streams/metadata/route.ts(29,13): error TS2571: Object is of type 'unknown'.
+app/api/streams/metadata/route.ts(29,14): error TS2352: Conversion of type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>'.
+app/api/streams/metadata/route.ts(67,13): error TS2571: Object is of type 'unknown'.
+app/api/streams/metadata/route.ts(67,14): error TS2352: Conversion of type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>'.
+app/api/streams/metadata/route.ts(103,11): error TS2571: Object is of type 'unknown'.
+app/api/streams/metadata/route.ts(103,12): error TS2352: Conversion of type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CurrentStreamDelegate<DefaultArgs, PrismaClientOptions>'.
+app/api/streams/next/route.ts(15,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/streams/next/route.ts(29,36): error TS2345: Argument of type '{} | null' is not assignable to parameter of type 'string | null'.
+  Type '{}' is not assignable to type 'string'.
+app/api/streams/next/route.ts(64,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/streams/next/route.ts(71,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/streams/next/route.ts(85,7): error TS2345: Argument of type '{}' is not assignable to parameter of type 'string'.
+app/api/streams/playlist/route.ts(14,23): error TS2349: This expression is not callable.
+  Type '{}' has no call signatures.
+app/api/streams/playlist/route.ts(14,38): error TS2352: Conversion of type '{ (input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>; (input: string | URL | Request, init?: RequestInit | undefined): Promise<...>; }' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type '{ (input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>; (input: string | URL | Request, init?: RequestInit | undefined): Promise<...>; }'.
+app/api/streams/playlist/route.ts(40,28): error TS18046: 'api.getPlaylist' is of type 'unknown'.
+app/api/streams/playlist/route.ts(43,29): error TS18046: 'api.getPlaylistTracks' is of type 'unknown'.
+app/api/streams/playlist/route.ts(52,26): error TS18046: 'api.getPlaylistTracks' is of type 'unknown'.
+app/api/streams/playlist/route.ts(71,37): error TS2345: Argument of type 'SpotifyWebApi' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'SpotifyWebApi'.
+app/api/streams/playlist/route.ts(88,35): error TS2345: Argument of type 'SpotifyWebApi' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'SpotifyWebApi'.
+app/api/streams/playlist/route.ts(115,30): error TS2339: Property 'spotify' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(118,35): error TS2339: Property 'images' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(122,23): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/playlist/route.ts(145,44): error TS2339: Property 'email' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(145,66): error TS2339: Property 'id' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(167,72): error TS2339: Property 'id' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(198,33): error TS2339: Property 'id' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(199,35): error TS2339: Property 'name' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(202,56): error TS2339: Property 'artists' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(203,25): error TS2339: Property 'artists' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(209,48): error TS2339: Property 'duration_ms' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(209,81): error TS2339: Property 'duration_ms' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(211,37): error TS2339: Property 'album' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(215,24): error TS2339: Property 'external_urls' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(217,47): error TS2339: Property 'uri' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(256,51): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+app/api/streams/playlist/route.ts(282,30): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/playlist/route.ts(304,22): error TS2571: Object is of type 'unknown'.
+app/api/streams/playlist/route.ts(304,23): error TS2352: Conversion of type 'PlaylistResult' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PlaylistResult'.
+app/api/streams/playlist/route.ts(308,36): error TS2339: Property 'thumbnails' does not exist on type '{}'.
+app/api/streams/playlist/route.ts(315,15): error TS2352: Conversion of type 'PlaylistResult' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PlaylistResult'.
+app/api/streams/public/route.ts(34,7): error TS2698: Spread types may only be created from object types.
+app/api/streams/public/route.ts(35,26): error TS18046: 'cs.stream' is of type 'unknown'.
+app/api/streams/public/route.ts(36,26): error TS18046: 'cs.stream' is of type 'unknown'.
+app/api/streams/remove/route.ts(29,38): error TS2345: Argument of type '{} | null' is not assignable to parameter of type 'string | null'.
+  Type '{}' is not assignable to type 'string'.
+app/api/streams/restricted/route.ts(21,44): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string | null'.
+app/api/streams/restricted/route.ts(50,11): error TS18046: 'm.user' is of type 'unknown'.
+app/api/streams/restricted/route.ts(51,17): error TS18046: 'm.user' is of type 'unknown'.
+app/api/streams/restricted/route.ts(52,20): error TS18046: 'm.user' is of type 'unknown'.
+app/api/streams/restricted/route.ts(53,14): error TS18046: 'm.user' is of type 'unknown'.
+app/api/streams/route.ts(6,7): error TS2451: Cannot redeclare block-scoped variable 'youtubesearchapi'.
+app/api/streams/route.ts(15,7): error TS2451: Cannot redeclare block-scoped variable 'youtubesearchapi'.
+app/api/streams/route.ts(22,23): error TS2349: This expression is not callable.
+  Type '{}' has no call signatures.
+app/api/streams/route.ts(22,38): error TS2352: Conversion of type '{ (input: RequestInfo | URL, init?: RequestInit | undefined): Promise<Response>; (input: string | Request | URL, init?: RequestInit | undefined): Promise<...>; }' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type '{ (input: RequestInfo | URL, init?: RequestInit | undefined): Promise<Response>; (input: string | Request | URL, init?: RequestInit | undefined): Promise<...>; }'.
+app/api/streams/route.ts(98,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/streams/route.ts(100,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/streams/route.ts(102,41): error TS2339: Property 'thumbnails' does not exist on type '{}'.
+app/api/streams/route.ts(135,37): error TS2339: Property 'id' does not exist on type '{}'.
+app/api/streams/route.ts(150,11): error TS2322: Type 'null' is not assignable to type 'Record<string, unknown>'.
+app/api/streams/route.ts(159,11): error TS2322: Type 'SingleTrackResponse' is not assignable to type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'SingleTrackResponse'.
+app/api/streams/route.ts(163,21): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/route.ts(176,13): error TS2322: Type 'SingleTrackResponse' is not assignable to type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'SingleTrackResponse'.
+app/api/streams/route.ts(180,23): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/route.ts(203,23): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/route.ts(217,29): error TS18046: 'track.artists' is of type 'unknown'.
+app/api/streams/route.ts(220,37): error TS2339: Property 'images' does not exist on type '{}'.
+app/api/streams/route.ts(243,19): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/api/streams/route.ts(255,16): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+app/api/streams/route.ts(282,9): error TS2367: This comparison appears to be unintentional because the types 'Record<string, unknown>' and 'string' have no overlap.
+app/api/streams/route.ts(282,10): error TS2352: Conversion of type 'string' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+app/api/streams/route.ts(319,28): error TS2571: Object is of type 'unknown'.
+app/api/streams/route.ts(319,29): error TS2352: Conversion of type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
+app/api/streams/route.ts(455,17): error TS2571: Object is of type 'unknown'.
+app/api/streams/route.ts(455,18): error TS2352: Conversion of type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
+app/api/streams/route.ts(471,32): error TS2571: Object is of type 'unknown'.
+app/api/streams/route.ts(471,33): error TS2352: Conversion of type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>'.
+app/api/streams/route.ts(552,18): error TS18046: '_count' is of type 'unknown'.
+app/api/streams/route.ts(553,22): error TS18046: 'rest.upvotes' is of type 'unknown'.
+app/api/streams/search/route.ts(65,10): error TS2352: Conversion of type 'SearchItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'SearchItem'.
+app/api/streams/search/route.ts(66,10): error TS2352: Conversion of type 'SearchItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'SearchItem'.
+app/api/streams/search/route.ts(67,10): error TS2352: Conversion of type 'SearchItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'SearchItem'.
+app/api/streams/sync/route.ts(32,38): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string | null'.
+app/api/streams/viewers/route.ts(21,44): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string | null'.
+app/api/streams/viewers/route.ts(43,19): error TS2322: Type 'unknown[]' is not assignable to type 'string[] | FieldRef<"ListeningActivity", "String[]"> | undefined'.
+  Type 'unknown[]' is not assignable to type 'string[]'.
+    Type 'unknown' is not assignable to type 'string'.
+app/api/streams/viewers/route.ts(65,11): error TS18046: 'av.user' is of type 'unknown'.
+app/api/streams/viewers/route.ts(66,17): error TS18046: 'av.user' is of type 'unknown'.
+app/api/streams/viewers/route.ts(67,20): error TS18046: 'av.user' is of type 'unknown'.
+app/api/streams/viewers/route.ts(68,14): error TS18046: 'av.user' is of type 'unknown'.
+app/api/streams/viewers/route.ts(70,31): error TS18046: 'av.user' is of type 'unknown'.
+app/api/user/delete/route.ts(53,16): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/favorites/route.ts(33,58): error TS2339: Property 'map' does not exist on type '{}'.
+app/api/user/favorites/route.ts(36,11): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+app/api/user/favorites/route.ts(45,9): error TS2698: Spread types may only be created from object types.
+app/api/user/me/route.ts(16,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/profile/route.ts(13,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/setup/route.ts(12,49): error TS2552: Cannot find name 'req'. Did you mean '_req'?
+app/api/user/setup/route.ts(38,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/setup/route.ts(42,7): error TS2322: Type '"MEMBER" | "OWNER" | "ADMIN"' is not assignable to type 'PlatformRole | EnumPlatformRoleFieldUpdateOperationsInput | undefined'.
+  Type '"ADMIN"' is not assignable to type 'PlatformRole | EnumPlatformRoleFieldUpdateOperationsInput | undefined'.
+app/api/user/update-displayname/route.ts(12,33): error TS2552: Cannot find name 'req'. Did you mean '_req'?
+app/api/user/update-displayname/route.ts(23,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/update-image/route.ts(13,29): error TS2552: Cannot find name 'req'. Did you mean '_req'?
+app/api/user/update-image/route.ts(17,18): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/update-image/route.ts(37,18): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/update-image/route.ts(46,16): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/update-username/route.ts(21,62): error TS2322: Type '{}' is not assignable to type 'string'.
+app/api/user/update-username/route.ts(62,14): error TS2322: Type '{}' is not assignable to type 'string'.
+app/auth/banned/page.tsx(17,7): error TS2304: Cannot find name 'router'.
+app/auth/banned/page.tsx(31,13): error TS2304: Cannot find name 'router'.
+app/auth/banned/page.tsx(49,15): error TS2304: Cannot find name 'router'.
+app/auth/banned/page.tsx(59,54): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type '{}' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type '{}' is not assignable to parameter of type 'string | number'.
+app/auth/banned/page.tsx(88,19): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+app/auth/banned/page.tsx(94,13): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/auth/banned/page.tsx(102,48): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+app/auth/setup/page.tsx(70,24): error TS2339: Property 'username' does not exist on type '{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }'.
+app/components/GuestJoinModal.tsx(19,3): error TS2339: Property '_streamTitle' does not exist on type 'GuestJoinModalProps'.
+app/components/PlayerSection.tsx(58,3): error TS2339: Property '_accessStatus' does not exist on type 'PlayerSectionProps'.
+app/components/PlayerSection.tsx(76,11): error TS18046: 'playerRef.current.setPlaybackRate' is of type 'unknown'.
+app/components/PlayerSection.tsx(135,27): error TS2571: Object is of type 'unknown'.
+app/components/PlayerSection.tsx(135,28): error TS2352: Conversion of type 'Window & typeof globalThis' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Window & typeof globalThis'.
+app/components/PlayerSection.tsx(136,27): error TS2571: Object is of type 'unknown'.
+app/components/PlayerSection.tsx(136,28): error TS2352: Conversion of type 'Window & typeof globalThis' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Window & typeof globalThis'.
+app/components/PlayerSection.tsx(137,27): error TS2571: Object is of type 'unknown'.
+app/components/PlayerSection.tsx(137,28): error TS2352: Conversion of type 'Window & typeof globalThis' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Window & typeof globalThis'.
+app/components/PlaylistModal.tsx(59,25): error TS2322: Type '{}' is not assignable to type 'string | StaticImport'.
+app/components/PlaylistModal.tsx(60,25): error TS2322: Type 'unknown' is not assignable to type 'string'.
+app/components/PlaylistModal.tsx(70,83): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/components/RestrictionGuardian.tsx(18,24): error TS2304: Cannot find name 'isTimedOut'.
+app/components/SearchBar.tsx(53,19): error TS2322: Type 'unknown' is not assignable to type 'Key | null | undefined'.
+app/components/SearchBar.tsx(59,23): error TS2322: Type 'unknown' is not assignable to type 'string | StaticImport'.
+app/components/SearchBar.tsx(67,78): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/components/SearchBar.tsx(68,67): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/components/StreamCard.tsx(13,45): error TS2339: Property 'viewerCount' does not exist on type '{}'.
+app/components/StreamCard.tsx(22,11): error TS2322: Type '{}' is not assignable to type 'string | Blob | undefined'.
+app/components/StreamCard.tsx(23,11): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+app/components/StreamCard.tsx(62,31): error TS2339: Property 'image' does not exist on type '{}'.
+app/components/StreamCard.tsx(65,38): error TS2339: Property 'image' does not exist on type '{}'.
+app/components/StreamCard.tsx(67,38): error TS2339: Property 'username' does not exist on type '{}'.
+app/components/StreamCard.tsx(78,19): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+app/components/StreamCard.tsx(80,17): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/components/StreamCard.tsx(82,21): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+app/components/StreamCard.tsx(86,80): error TS2339: Property 'username' does not exist on type '{}'.
+app/components/StreamManagement.tsx(209,59): error TS18046: 'req.viewer' is of type 'unknown'.
+app/components/StreamManagement.tsx(297,17): error TS2322: Type 'unknown' is not assignable to type 'Key | null | undefined'.
+app/components/StreamManagement.tsx(301,21): error TS18046: 'req.viewer' is of type 'unknown'.
+app/components/StreamManagement.tsx(301,44): error TS18046: 'req.viewer' is of type 'unknown'.
+app/components/StreamManagement.tsx(305,50): error TS18046: 'req.viewer' is of type 'unknown'.
+app/components/StreamManagement.tsx(312,50): error TS18046: 'req.viewer' is of type 'unknown'.
+app/components/StreamView.tsx(116,18): error TS2304: Cannot find name 'useRouter'.
+app/components/StreamView.tsx(227,22): error TS18046: 'b.upvotes' is of type 'unknown'.
+app/components/StreamView.tsx(227,34): error TS18046: 'a.upvotes' is of type 'unknown'.
+app/components/StreamView.tsx(229,29): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+app/components/StreamView.tsx(229,63): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+app/components/StreamView.tsx(350,21): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/components/StreamView.tsx(463,30): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/StreamView.tsx(489,17): error TS18046: 'playerRef.current.seekTo' is of type 'unknown'.
+app/components/StreamView.tsx(525,33): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/StreamView.tsx(626,44): error TS2349: This expression is not callable.
+  Type '{}' has no call signatures.
+app/components/StreamView.tsx(644,13): error TS18046: 'playerRef.current.seekTo' is of type 'unknown'.
+app/components/StreamView.tsx(704,7): error TS18046: 'playerRef.current.seekTo' is of type 'unknown'.
+app/components/StreamView.tsx(732,5): error TS2304: Cannot find name 'setIsResolving'.
+app/components/StreamView.tsx(796,19): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/components/StreamView.tsx(938,19): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/components/StreamView.tsx(1006,17): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/components/StreamView.tsx(1037,21): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/components/StreamView.tsx(1067,11): error TS18046: 'playerRef.current.seekTo' is of type 'unknown'.
+app/components/StreamView.tsx(1084,7): error TS18046: 'playerRef.current.seekTo' is of type 'unknown'.
+app/components/StreamView.tsx(1352,23): error TS2322: Type 'RefObject<Record<string, unknown> | null>' is not assignable to type 'RefObject<Record<string, unknown>>'.
+  Type 'Record<string, unknown> | null' is not assignable to type 'Record<string, unknown>'.
+    Type 'null' is not assignable to type 'Record<string, unknown>'.
+app/components/StreamView.tsx(1368,47): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/StreamView.tsx(1382,47): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/StreamView.tsx(1447,27): error TS18047: 'playerRef.current' is possibly 'null'.
+app/components/StreamView.tsx(1447,27): error TS18046: 'playerRef.current.pauseVideo' is of type 'unknown'.
+app/components/StreamView.tsx(1451,47): error TS18047: 'playerRef.current' is possibly 'null'.
+app/components/StreamView.tsx(1451,47): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/StreamView.tsx(1461,27): error TS18047: 'playerRef.current' is possibly 'null'.
+app/components/StreamView.tsx(1461,27): error TS18046: 'playerRef.current.playVideo' is of type 'unknown'.
+app/components/StreamView.tsx(1465,47): error TS18047: 'playerRef.current' is possibly 'null'.
+app/components/StreamView.tsx(1465,47): error TS18046: 'playerRef.current.getCurrentTime' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(58,24): error TS18046: 'window.YT.Player' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(77,11): error TS2571: Object is of type 'unknown'.
+app/components/YouTubePlayer.tsx(78,22): error TS2571: Object is of type 'unknown'.
+app/components/YouTubePlayer.tsx(99,21): error TS18046: 'playerRef.current.getPlayerState' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(100,32): error TS18046: 'window.YT.PlayerState' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(101,9): error TS18046: 'playerRef.current.playVideo' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(102,40): error TS18046: 'window.YT.PlayerState' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(103,9): error TS18046: 'playerRef.current.pauseVideo' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(113,5): error TS18046: 'playerRef.current.setVolume' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(115,7): error TS18046: 'playerRef.current.mute' is of type 'unknown'.
+app/components/YouTubePlayer.tsx(117,7): error TS18046: 'playerRef.current.unMute' is of type 'unknown'.
+app/discover/page.tsx(29,21): error TS1196: Catch clause variable type annotation must be 'any' or 'unknown' if specified.
+app/discover/page.tsx(78,27): error TS18046: 'stream.user' is of type 'unknown'.
+app/discover/page.tsx(78,52): error TS18046: 'stream.user' is of type 'unknown'.
+app/discover/page.tsx(83,7): error TS18046: 's.title' is of type 'unknown'.
+app/discover/page.tsx(84,7): error TS18046: 's.user' is of type 'unknown'.
+app/discover/page.tsx(144,21): error TS2322: Type 'unknown' is not assignable to type 'Key | null | undefined'.
+app/discover/page.tsx(152,27): error TS2322: Type '{}' is not assignable to type 'string | Blob | undefined'.
+app/discover/page.tsx(153,27): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+app/discover/page.tsx(164,25): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/discover/page.tsx(167,26): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/discover/page.tsx(204,22): error TS2322: Type 'unknown' is not assignable to type 'Key | null | undefined'.
+app/discover/page.tsx(228,9): error TS2322: Type '{}' is not assignable to type 'string'.
+app/discover/page.tsx(229,48): error TS2339: Property 'username' does not exist on type '{}'.
+app/discover/page.tsx(232,46): error TS2339: Property 'partyCode' does not exist on type '{}'.
+app/discover/page.tsx(232,80): error TS2339: Property 'id' does not exist on type '{}'.
+app/lib/auth.ts(154,29): error TS2352: Conversion of type 'User | AdapterUser' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'AdapterUser' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'AdapterUser'.
+app/lib/auth.ts(155,33): error TS2352: Conversion of type 'User | AdapterUser' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'AdapterUser' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'AdapterUser'.
+app/lib/auth.ts(162,8): error TS2352: Conversion of type 'Session' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Session'.
+app/lib/auth.ts(163,8): error TS2352: Conversion of type 'Session' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Session'.
+app/lib/getSessionRole.ts(9,23): error TS2339: Property 'id' does not exist on type '{}'.
+app/lib/getSessionRole.ts(11,31): error TS2339: Property 'id' does not exist on type '{}'.
+app/user/[username]/page.tsx(75,42): error TS18047: 'user' is possibly 'null'.
+app/user/[username]/page.tsx(136,23): error TS2322: Type '{}' is not assignable to type 'string | Blob | undefined'.
+app/user/[username]/page.tsx(137,23): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+app/user/[username]/page.tsx(144,17): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/user/[username]/page.tsx(155,21): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+app/user/[username]/page.tsx(163,21): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/user/[username]/page.tsx(166,22): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+app/user/[username]/page.tsx(228,23): error TS2322: Type '{}' is not assignable to type 'ReactNode'.

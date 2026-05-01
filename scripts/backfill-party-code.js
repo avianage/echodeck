@@ -1,32 +1,35 @@
-require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
-const crypto = require('crypto');
+const { PrismaClient } = await import('@prisma/client');
+const crypto = await import('crypto');
+const { config } = await import('dotenv');
+
+config();
+
 const prisma = new PrismaClient();
 
 async function main() {
   const users = await prisma.user.findMany({
     where: {
-      OR: [
-        { partyCode: null },
-        { partyCode: "" }
-      ]
-    }
+      OR: [{ partyCode: null }, { partyCode: '' }],
+    },
   });
-  
+
+  // eslint-disable-next-line no-console
   console.log(`Backfilling ${users.length} users...`);
-  
+
   for (const user of users) {
     await prisma.user.update({
       where: { id: user.id },
-      data: { partyCode: crypto.randomUUID() }
+      data: { partyCode: crypto.randomUUID() },
     });
   }
-  
-  console.log("Done!");
+
+  // eslint-disable-next-line no-console
+  console.log('Done!');
 }
 
 main()
-  .catch(e => {
+  .catch((e) => {
+    // eslint-disable-next-line no-console
     console.error(e);
     process.exit(1);
   })

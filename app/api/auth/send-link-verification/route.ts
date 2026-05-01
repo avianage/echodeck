@@ -1,27 +1,45 @@
 export const dynamic = 'force-dynamic';
-import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@/app/lib/db";
-import { Resend } from "resend";
-import crypto from "crypto";
+import { NextRequest, NextResponse } from 'next/server';
+import { prismaClient } from '@/app/lib/db';
+import { Resend } from 'resend';
+import crypto from 'crypto';
+import { z } from 'zod';
+import { isRateLimited } from '@/app/lib/rateLimit';
+
+const SendLinkSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  provider: z.enum(['email', 'spotify']),
+});
 
 export async function POST(req: NextRequest) {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const { email, provider } = await req.json();
-    const normalizedEmail = email.toLowerCase();
-    const token = crypto.randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+  const body = await req.json();
+  const { email, provider } = SendLinkSchema.parse(body);
 
-    await prismaClient.verificationToken.create({
-        data: { identifier: `link:${provider}:${normalizedEmail}`, token, expires }
-    });
+  const rateKey = `send-link:${email.toLowerCase()}`;
+  if (isRateLimited(rateKey, 5, 15 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Try again later.' },
+      { status: 429 },
+    );
+  }
 
-    const verifyUrl = `${process.env.NEXTAUTH_URL}/api/auth/link-provider?token=${token}&email=${encodeURIComponent(normalizedEmail)}&provider=${provider}`;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const normalizedEmail = email.toLowerCase();
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiryMinutes = parseInt(process.env.MAGIC_LINK_EXPIRY_MINUTES || '15', 10);
+  const expires = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
-    await resend.emails.send({
-        from: "EchoDeck <noreply@avianage.in>",
-        to: normalizedEmail,
-        subject: "Confirm account linking — EchoDeck",
-        html: `
+  await prismaClient.verificationToken.create({
+    data: { identifier: `link:${provider}:${normalizedEmail}`, token, expires },
+  });
+
+  const verifyUrl = `${process.env.NEXTAUTH_URL}/api/auth/link-provider?token=${token}&email=${encodeURIComponent(normalizedEmail)}&provider=${provider}`;
+
+  await resend.emails.send({
+    from: 'EchoDeck <noreply@avianage.in>',
+    to: normalizedEmail,
+    subject: 'Confirm account linking — EchoDeck',
+    html: `
             <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
                 <tr>
                     <td align="center" style="padding: 40px 20px;">
@@ -78,9 +96,8 @@ export async function POST(req: NextRequest) {
                     </td>
                 </tr>
             </table>
-        `
-    });
+        `,
+  });
 
-    return NextResponse.json({ message: "Verification email sent" });
+  return NextResponse.json({ message: 'Verification email sent' });
 }
-

@@ -1,11 +1,13 @@
 try {
-  require('dotenv').config()
-} catch (e) {
+  await import('dotenv').then((m) => m.config());
+} catch {
   // dotenv is optional (not present in production standalone builds)
 }
 
-module.exports = {
+const config = {
   datasource: {
     url: process.env.DATABASE_URL,
   },
-}
+};
+
+export default config;

@@ -3,6 +3,7 @@
 This guide covers building and running EchoDeck in production using plain Docker.
 
 ## Prerequisites
+
 - Docker installed on the host machine.
 - A running PostgreSQL instance (external or on the same host).
 - Google and Spotify Developer app credentials.
@@ -25,17 +26,17 @@ SPOTIFY_CLIENT_SECRET="your-spotify-client-secret"
 RESEND_API_KEY="your-resend-api-key"
 ```
 
-| Variable | Description |
-| :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `NEXTAUTH_URL` | Your public-facing app URL |
-| `NEXTAUTH_SECRET` | Random secret — `openssl rand -base64 32` |
-| `GOOGLE_CLIENT_ID` | Google OAuth Client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret |
-| `SPOTIFY_CLIENT_ID` | Spotify Developer App Client ID |
-| `SPOTIFY_CLIENT_SECRET` | Spotify Developer App Client Secret |
-| `RESEND_API_KEY` | Resend API key for transactional emails |
-| `NEXT_PUBLIC_ALLOW_OWNER_CREATION` | Build-time arg — `true` on first deploy only |
+| Variable                | Description                                  |
+| :---------------------- | :------------------------------------------- |
+| `DATABASE_URL`          | PostgreSQL connection string                 |
+| `NEXTAUTH_URL`          | Your public-facing app URL                   |
+| `NEXTAUTH_SECRET`       | Random secret — `openssl rand -base64 32`    |
+| `GOOGLE_CLIENT_ID`      | Google OAuth Client ID                       |
+| `GOOGLE_CLIENT_SECRET`  | Google OAuth Client Secret                   |
+| `SPOTIFY_CLIENT_ID`     | Spotify Developer App Client ID              |
+| `SPOTIFY_CLIENT_SECRET` | Spotify Developer App Client Secret          |
+| `RESEND_API_KEY`        | Resend API key for transactional emails      |
+| `ALLOW_OWNER_CREATION`  | Build-time arg — `true` on first deploy only |
 
 ---
 
@@ -45,11 +46,11 @@ Run from the `app/` directory:
 
 ```bash
 docker build \
-  --build-arg NEXT_PUBLIC_ALLOW_OWNER_CREATION=false \
+  --build-arg ALLOW_OWNER_CREATION=false \
   -t echodeck:latest .
 ```
 
-> **First deploy only**: set `NEXT_PUBLIC_ALLOW_OWNER_CREATION=true` to enable the platform owner registration page. After the owner account is created, rebuild with `false`.
+> **First deploy only**: set `ALLOW_OWNER_CREATION=true` to enable the platform owner registration page. After the owner account is created, rebuild with `false`.
 
 ---
 
@@ -80,6 +81,7 @@ docker logs echodeck
 ```
 
 The built-in health endpoint is at:
+
 ```
 GET /api/health
 ```
@@ -97,7 +99,7 @@ services:
     container_name: echodeck
     restart: always
     ports:
-      - "3002:3002"
+      - '3002:3002'
     env_file:
       - .env.production
 
@@ -107,6 +109,7 @@ networks:
 ```
 
 Then run:
+
 ```bash
 docker compose up -d
 ```

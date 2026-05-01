@@ -1,0 +1,125 @@
+
+D:\Programming\Projects\EchoDeck\app\account\page.tsx
+  610:24  error    Comments inside children section of tag should be placed inside braces                                                                                                                                                                                                                   react/jsx-no-comment-textnodes
+  612:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  641:26  error    Comments inside children section of tag should be placed inside braces                                                                                                                                                                                                                   react/jsx-no-comment-textnodes
+  643:27  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Programming\Projects\EchoDeck\app\auth\banned\page.tsx
+  48:6  warning  React Hook useEffect has an unnecessary dependency: 'router'. Either exclude it or remove the dependency array. Outer scope values like 'router' aren't valid dependencies because mutating them doesn't re-render the component  react-hooks/exhaustive-deps
+
+D:\Programming\Projects\EchoDeck\app\components\BanModal.tsx
+  23:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Programming\Projects\EchoDeck\app\components\BanModal.tsx:23:7
+  21 |   useEffect(() => {
+  22 |     if (isOpen) {
+> 23 |       setType('timeout');
+     |       ^^^^^^^ Avoid calling setState() directly within an effect
+  24 |       setDuration('1hr');
+  25 |       setReason('');
+  26 |     }  react-hooks/set-state-in-effect
+
+D:\Programming\Projects\EchoDeck\app\components\RestrictionGuardian.tsx
+  16:13  error    'bannedUntil' is assigned a value but never used. Allowed unused vars must match /^_/u          @typescript-eslint/no-unused-vars
+  24:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+
+D:\Programming\Projects\EchoDeck\app\components\StreamCard.tsx
+  65:22  error  Parsing error: ')' expected
+
+D:\Programming\Projects\EchoDeck\app\components\StreamManagement.tsx
+  110:6  warning  React Hook useEffect has missing dependencies: 'fetchRestrictedUsers' and 'fetchViewers'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\Programming\Projects\EchoDeck\app\components\StreamView.tsx
+   445:17  warning  Unexpected console statement                                                                                                                                    no-console
+   596:6   warning  React Hook useEffect has missing dependencies: 'currentUserId', 'isPaused', 'router', and 'streamIsPublic'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   679:6   warning  React Hook useEffect has a missing dependency: 'refreshStreams'. Either include it or remove the dependency array                                               react-hooks/exhaustive-deps
+   856:9   warning  Unexpected console statement                                                                                                                                    no-console
+   898:9   warning  Unexpected console statement                                                                                                                                    no-console
+  1075:7   warning  Unexpected console statement                                                                                                                                    no-console
+  1350:25  warning  Unexpected console statement                                                                                                                                    no-console
+  1382:25  warning  Unexpected console statement                                                                                                                                    no-console
+  1387:25  warning  Unexpected console statement                                                                                                                                    no-console
+  1410:25  warning  Unexpected console statement                                                                                                                                    no-console
+  1444:36  warning  Unexpected console statement                                                                                                                                    no-console
+  1455:36  warning  Unexpected console statement                                                                                                                                    no-console
+
+D:\Programming\Projects\EchoDeck\app\components\YouTubePlayer.tsx
+  11:21  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  12:26  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  19:9   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  33:28  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  75:26  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  82:26  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                            @typescript-eslint/no-explicit-any
+  91:6   warning  React Hook useEffect has missing dependencies: 'muted', 'onError', 'onReady', 'onStateChange', and 'volume'. Either include them or remove the dependency array. If 'onReady' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+D:\Programming\Projects\EchoDeck\app\dashboard\page.tsx
+   51:7    warning  Unexpected console statement                                                                                                                                                                                                                                                             no-console
+  123:33   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  124:40   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  136:66   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  136:120  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  139:37   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  140:37   warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  273:33   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Programming\Projects\EchoDeck\app\discover\page.tsx
+   60:9   warning  Unexpected console statement                                                                                                                                                                                                                                                             no-console
+  149:25  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Programming\Projects\EchoDeck\app\error.tsx
+   3:1  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+   4:1  warning  Unused eslint-disable directive (no problems were reported from 'react/jsx-no-comment-textnodes')
+  17:3  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+
+D:\Programming\Projects\EchoDeck\app\lib\auth.ts
+  154:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  155:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  162:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  163:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  174:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  175:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  176:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  177:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  178:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  179:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  270:13  warning  Unexpected console statement              no-console
+  287:13  warning  Unexpected console statement              no-console
+  298:9   warning  Unexpected console statement              no-console
+
+D:\Programming\Projects\EchoDeck\app\lib\getSessionRole.ts
+   8:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  29:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Programming\Projects\EchoDeck\app\user\[username]\page.tsx
+   26:36  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   53:9   warning  Unexpected console statement                                                                                                                                                                                                                                                             no-console
+  107:36  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  133:21  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Programming\Projects\EchoDeck\proxy.ts
+  106:16  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  116:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Programming\Projects\EchoDeck\scripts\backfill-party-code.js
+  16:3  warning  Unexpected console statement  no-console
+  25:3  warning  Unexpected console statement  no-console
+  30:5  warning  Unexpected console statement  no-console
+
+D:\Programming\Projects\EchoDeck\scripts\check-users.js
+  13:3  warning  Unexpected console statement  no-console
+  18:5  warning  Unexpected console statement  no-console
+
+D:\Programming\Projects\EchoDeck\scripts\check-users.ts
+  12:3  warning  Unexpected console statement  no-console
+  17:5  warning  Unexpected console statement  no-console
+
+✖ 70 problems (5 errors, 65 warnings)
+  0 errors and 4 warnings potentially fixable with the `--fix` option.
+
