@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
           provider: 'google',
         },
       });
-      return NextResponse.json({ message: 'Google disconnected successfully' });
+      return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
     }
 
     if (provider === 'spotify') {
@@ -58,12 +58,11 @@ export async function POST(req: NextRequest) {
           spotifyTokenExpiresAt: null,
         },
       });
-      return NextResponse.json({ message: 'Spotify disconnected successfully' });
+      return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
     }
 
     return NextResponse.json({ message: 'Invalid provider' }, { status: 400 });
   } catch (error) {
-     
     logger.error({ err: error }, 'Error disconnecting provider');
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }

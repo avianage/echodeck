@@ -66,7 +66,5 @@ export async function DELETE(req: NextRequest) {
     where: { id: targetUserId },
   });
 
-  return NextResponse.json({
-    message: `User "${targetUser.username || targetUserId}" has been deleted`,
-  });
+  return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
 }

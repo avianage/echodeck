@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: 'User not found' }, { status: 403 });
+      return NextResponse.json(
+        { message: 'User not found' },
+        { status: 404 }, // was: 403, now: 404 (not found)
+      );
     }
 
     if (user.isBanned) {
@@ -103,9 +106,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ message: 'Downvoted (removed upvote) successfully!' });
+    return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
   } catch (error: unknown) {
-     
     logger.error({ err: error }, 'Error while Downvoting:');
 
     return NextResponse.json(

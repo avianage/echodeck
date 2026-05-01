@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ message: 'Stream removed successfully' });
+    return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
   } catch {
     return NextResponse.json({ message: 'Error removing stream' }, { status: 500 });
   }

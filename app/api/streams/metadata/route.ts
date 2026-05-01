@@ -86,7 +86,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ message: 'Metadata updated successfully' });
   } catch (error) {
-     
     logger.error({ err: error }, '❌ POST /api/streams/metadata failed:');
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
@@ -104,9 +103,8 @@ export async function DELETE(_req: NextRequest) {
     await prismaClient.currentStream.deleteMany({
       where: { userId },
     });
-    return NextResponse.json({ message: 'Stream stopped successfully' });
+    return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
   } catch (error) {
-     
     logger.error({ err: error }, '❌ DELETE /api/streams/metadata failed:');
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }

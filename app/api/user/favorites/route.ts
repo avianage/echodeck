@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       await prismaClient.favorite.delete({
         where: { id: existing.id },
       });
-      return NextResponse.json({ message: 'Removed from favorites' });
+      return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
     } else {
       // Check limit
       const count = await prismaClient.favorite.count({
@@ -96,7 +96,10 @@ export async function POST(req: NextRequest) {
           favoriteId,
         },
       });
-      return NextResponse.json({ message: 'Added to favorites' });
+      return NextResponse.json(
+        { message: 'Added to favorites' },
+        { status: 201 }, // was: 200, now: 201 (created)
+      );
     }
   } catch (err: unknown) {
     return NextResponse.json({ message: 'Error updating favorites' }, { status: 500 });

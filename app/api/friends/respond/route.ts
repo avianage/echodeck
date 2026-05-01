@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
   });
 
   if (!friendship || friendship.addresseeId !== userId) {
-    return NextResponse.json({ message: 'Unauthorized or request not found' }, { status: 403 });
+    return NextResponse.json(
+      { message: 'Unauthorized or request not found' },
+      { status: 404 }, // was: 403, now: 404 (not found)
+    );
   }
 
   await prismaClient.friendship.update({

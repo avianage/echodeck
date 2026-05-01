@@ -99,5 +99,8 @@ export async function POST(req: NextRequest) {
         `,
   });
 
-  return NextResponse.json({ message: 'Verification email sent' });
+  return NextResponse.json(
+    { message: 'Verification email sent' },
+    { status: 201 }, // was: 200, now: 201 (created)
+  );
 }

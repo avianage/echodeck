@@ -8,6 +8,7 @@ import React from 'react';
 import { WindowsTitleBar } from './components/WindowsTitleBar';
 import { Appbar } from './components/Appbar';
 import { BottomNav } from './components/BottomNav';
+import { Footer } from './components/Footer';
 import { MainLayout } from './components/MainLayout';
 
 const geistSans = Geist({
@@ -63,6 +64,7 @@ export default function RootLayout({
               <Appbar />
             </div>
             <MainLayout>{children}</MainLayout>
+            <Footer />
             <BottomNav />
             <ToastContainer position="top-right" autoClose={3000} theme="dark" />
           </RestrictionGuardian>

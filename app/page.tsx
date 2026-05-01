@@ -93,32 +93,6 @@ export default function LandingPage() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-white/5 bg-black/50 backdrop-blur-xl mt-40">
-        <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="text-xl font-black tracking-tighter text-white uppercase italic">
-              Echo<span className="text-primary">Deck</span>
-            </div>
-            <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest border-l border-white/10 pl-3">
-              © 2026 EchoDeck
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500">
-            <span>Developed and Managed by</span>
-            <a
-              href="https://avianage.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:text-primary/80 transition-colors hover:underline underline-offset-4"
-            >
-              Aakash Joshi
-            </a>
-          </div>
-        </div>
-      </footer>
-
       {/* Background decoration */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full h-[50vh] bg-gradient-to-t from-primary/5 to-transparent pointer-events-none -z-0" />
     </div>

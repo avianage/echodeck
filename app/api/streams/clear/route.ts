@@ -33,5 +33,5 @@ export async function POST(_req: NextRequest) {
     },
   });
 
-  return new Response('Queue stopped and cleared', { status: 200 });
+  return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
 }

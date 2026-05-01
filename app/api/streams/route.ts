@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
           message: 'Wrong URL format',
         },
         {
-          status: 411,
+          status: 400, // was: 411, now: 400 (validation error)
         },
       );
     }
@@ -66,17 +66,18 @@ export async function POST(req: NextRequest) {
       streamType = 'Youtube';
       extractedId = isYt[1];
       if (!extractedId) {
-        return NextResponse.json({ message: 'Invalid YouTube URL.' }, { status: 411 });
+        return NextResponse.json(
+          { message: 'Invalid YouTube URL.' },
+          { status: 400 }, // was: 411, now: 400 (validation error)
+        );
       }
 
-       
       logger.info(`🎥 Fetching details for video: ${extractedId}`);
       try {
         let res: YouTubeVideoDetails;
         try {
           res = await youtubesearchapi.GetVideoDetails(extractedId);
         } catch (libErr) {
-           
           logger.warn(
             { err: libErr },
             `⚠️ GetVideoDetails threw an error for ${extractedId}. Trying search fallback...`,
@@ -113,7 +114,6 @@ export async function POST(req: NextRequest) {
         if (!smallImg) smallImg = `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`;
         if (!bigImg) bigImg = `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
       } catch (e: unknown) {
-         
         logger.error({ err: e }, `❌ YouTube detail fetching failed:`);
         return NextResponse.json(
           {
@@ -126,12 +126,15 @@ export async function POST(req: NextRequest) {
       streamType = 'Spotify';
       const spotifyId = isSpotify[1];
       if (!spotifyId) {
-        return NextResponse.json({ message: 'Invalid Spotify URL.' }, { status: 411 });
+        return NextResponse.json(
+          { message: 'Invalid Spotify URL.' },
+          { status: 400 }, // was: 411, now: 400 (validation error)
+        );
       }
 
       const session = await getServerSession(authOptions);
       const userId = session?.user?.id;
-       
+
       logger.info(`🎧 Fetching details for Spotify track: ${spotifyId}`);
 
       const token = await getValidSpotifyToken(userId as string);
@@ -149,34 +152,30 @@ export async function POST(req: NextRequest) {
 
       // 1. Try User Linked Token (from spotifyToken helper)
       try {
-         
         logger.info('📡 Trying Linked Spotify Token for track fetch');
         const userApi = getUserSpotifyApi(token);
         if (userApi) {
           const res = await userApi.getTrack(spotifyId);
           track = res.body as unknown as SpotifyTrack;
-           
+
           logger.info('✅ Track fetched via Linked Token');
         }
       } catch (err: unknown) {
-         
         logger.warn(`⚠️ Linked Token failed for track ${spotifyId}: ${(err as Error).message}`);
       }
 
       // 2. Try App Client Credentials if No Linked Token or it failed
       if (!track) {
         try {
-           
           logger.info('📡 Trying Client Credentials for track fetch');
           const appApi = await getSpotifyApi();
           if (appApi) {
             const res = await appApi.getTrack(spotifyId);
             track = res.body as unknown as SpotifyTrack;
-             
+
             logger.info('✅ Track fetched via Client Credentials');
           }
         } catch (err: unknown) {
-           
           logger.warn(
             `⚠️ Client Credentials failed for track ${spotifyId}: ${(err as Error).message}`,
           );
@@ -186,7 +185,6 @@ export async function POST(req: NextRequest) {
       // 3. Fallback to Scraping
       if (!track) {
         try {
-           
           logger.info('📡 Falling back to SCRAPE for track fetch');
           const trackUrl = `https://open.spotify.com/track/${spotifyId}`;
           const scrapedTracks = await getTracks(trackUrl);
@@ -197,12 +195,14 @@ export async function POST(req: NextRequest) {
               artists: t.artists || [{ name: t.artist || 'Unknown Artist' }],
               album: { images: t.album?.images || [] },
             } as SpotifyTrack;
-             
+
             logger.info('✅ Track fetched via Scraping');
           }
         } catch (err: unknown) {
-           
-          logger.error({ err: (err as Error).message }, '❌ All Spotify track fetch methods failed.');
+          logger.error(
+            { err: (err as Error).message },
+            '❌ All Spotify track fetch methods failed.',
+          );
         }
       }
 
@@ -241,7 +241,6 @@ export async function POST(req: NextRequest) {
         }
         extractedId = bestMatch.id;
       } catch (e) {
-         
         logger.error({ err: e }, `❌ Spotify API or YT fallback failed:`);
         return NextResponse.json({ message: 'Failed to process Spotify track.' }, { status: 400 });
       }
@@ -265,7 +264,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      return NextResponse.json({ message: 'User not found' }, { status: 403 });
+      return NextResponse.json(
+        { message: 'User not found' },
+        { status: 404 }, // was: 403, now: 404 (not found)
+      );
     }
 
     const role = await getStreamRole(user.id, data.creatorId);
@@ -339,7 +341,7 @@ export async function POST(req: NextRequest) {
           message: 'Stream Queue At limit',
         },
         {
-          status: 411,
+          status: 400, // was: 411, now: 400 (validation error)
         },
       );
     }
@@ -358,18 +360,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      ...stream,
-      haveUpvoted: false,
-      upvotes: 0,
-    });
+    return NextResponse.json(
+      {
+        ...stream,
+        haveUpvoted: false,
+        upvotes: 0,
+      },
+      { status: 201 },
+    ); // was: 200, now: 201 (created)
   } catch (e: unknown) {
     return NextResponse.json(
       {
         message: 'Error while adding a Stream: ' + e,
       },
       {
-        status: 411,
+        status: 400, // was: 411, now: 400 (validation error)
       },
     );
   }
@@ -397,7 +402,7 @@ export async function GET(req: NextRequest) {
           message: 'Error: No creatorId provided',
         },
         {
-          status: 411,
+          status: 400, // was: 411, now: 400 (validation error)
         },
       );
     }
@@ -420,7 +425,7 @@ export async function GET(req: NextRequest) {
           message: 'User not found',
         },
         {
-          status: 403,
+          status: 404, // was: 403, now: 404 (not found)
         },
       );
     }
@@ -446,7 +451,6 @@ export async function GET(req: NextRequest) {
         const resetAccess = req.nextUrl.searchParams.get('resetAccess') === 'true';
 
         if (resetAccess) {
-           
           logger.info(`🔄 Resetting access for user ${user.id} on creator ${creator.id}`);
           await prismaClient.streamAccess.upsert({
             where: {
@@ -539,7 +543,6 @@ export async function GET(req: NextRequest) {
             }
           : null;
 
-     
     logger.info('GET /api/streams: Access check completed');
 
     return NextResponse.json({
@@ -560,7 +563,6 @@ export async function GET(req: NextRequest) {
       restriction,
     });
   } catch (e: unknown) {
-     
     logger.error({ err: e }, '❌ GET /api/streams failed:');
     return NextResponse.json(
       {

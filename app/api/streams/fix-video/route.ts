@@ -39,7 +39,10 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: 'User not found' }, { status: 403 });
+      return NextResponse.json(
+        { message: 'User not found' },
+        { status: 404 }, // was: 403, now: 404 (not found)
+      );
     }
 
     const existingStream = await prismaClient.stream.findUnique({
@@ -70,7 +73,6 @@ export async function POST(req: NextRequest) {
         bigImg = sorted[sorted.length - 1]?.url;
       }
     } catch (thumbErr) {
-       
       logger.warn(
         { err: thumbErr },
         'Fix-video: Failed to fetch thumbnails for replacement video, using defaults.',
@@ -94,7 +96,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ stream: updated });
   } catch (err: unknown) {
-     
     logger.error({ err: err }, 'Fix-video POST: Unexpected error:');
     return NextResponse.json(
       { message: 'Failed to apply fixed video', error: (err as Error)?.message ?? String(err) },

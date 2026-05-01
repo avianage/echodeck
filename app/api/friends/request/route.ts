@@ -45,5 +45,8 @@ export async function POST(req: NextRequest) {
     data: { requesterId, addresseeId: addressee.id, status: 'PENDING' },
   });
 
-  return NextResponse.json({ message: 'Friend request sent' });
+  return NextResponse.json(
+    { message: 'Friend request sent' },
+    { status: 201 }, // was: 200, now: 201 (created)
+  );
 }
