@@ -7,7 +7,7 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "Running Prisma migrations..."
-node /prisma-cli/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
+NODE_OPTIONS="--experimental-require-module" node /prisma-cli/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 
 echo "Starting the application..."
-exec node server.js
+HOSTNAME=0.0.0.0 exec node server.js

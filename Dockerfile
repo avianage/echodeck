@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22.11.0-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies for yt-dlp-exec and other native modules
@@ -8,28 +8,37 @@ RUN apk add --no-cache python3 build-base g++
 # Install dependencies with increased memory limit
 COPY package*.json ./
 COPY prisma ./prisma/
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-old-space-size=4096"
+RUN for i in $(seq 1 10); do \
+      npm install --no-audit --no-fund --ignore-scripts && exit 0; \
+      echo "Retry $i/10..."; \
+      sleep 10; \
+    done; \
+    exit 1
 
 # Generate Prisma client at build time — must happen while node_modules are writable
-RUN npx prisma generate
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-old-space-size=4096 --experimental-require-module"
+RUN for i in $(seq 1 5); do \
+      npx prisma generate && exit 0; \
+      echo "Prisma generate retry $i/5..."; \
+      sleep 5; \
+    done; \
+    exit 1
 
 # Copy source code and build the app
 COPY . .
-
-# After npm install, verify yt-dlp binary exists and is executable
-RUN test -f ./node_modules/yt-dlp-exec/bin/yt-dlp || \
-    (echo "❌ yt-dlp binary missing after install" && exit 1)
 
 # Build the app with increased memory limit
 ARG ALLOW_OWNER_CREATION
 ENV ALLOW_OWNER_CREATION=$ALLOW_OWNER_CREATION
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+RUN npx next build --webpack
+
+# Bundle prisma CLI with all dependencies for runtime migrations
+RUN node /app/scripts/bundle-prisma.js
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:22.11.0-alpine AS runner
 WORKDIR /app
 
 # Install runtime dependencies for yt-dlp (system package), ffmpeg, and python3
@@ -57,19 +66,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/docker-bootstrap.sh ./docker-boot
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Install full Prisma CLI in an isolated prefix for runtime migrations
-# Consolidate all root-level work into one block
+# Copy bundled Prisma CLI for runtime migrations
+COPY --from=builder --chown=nextjs:nodejs /prisma-bundle/node_modules /prisma-cli/node_modules
 USER root
-RUN npm install --prefix /prisma-cli prisma --no-save --ignore-scripts \
-    && chown -R nextjs:nodejs /prisma-cli/node_modules/prisma \
-    && chown -R nextjs:nodejs /prisma-cli/node_modules/.bin/prisma \
-    && chown -R nextjs:nodejs /prisma-cli/node_modules/@prisma 2>/dev/null || true \
-    && chown -R nextjs:nodejs /prisma-cli/node_modules/.cache 2>/dev/null || true \
-    && chmod +x ./docker-bootstrap.sh
+RUN chmod +x ./docker-bootstrap.sh
 
 # Add a HEALTHCHECK before switching to nextjs user
 HEALTHCHECK --interval=30s --timeout=15s --start-period=180s --retries=5 \
-  CMD wget -qO- http://localhost:3002/api/health || exit 1
+  CMD wget -qO- --header="x-forwarded-for: 127.0.0.1" http://127.0.0.1:3002/api/health || exit 1
 
 USER nextjs
 
