@@ -39,12 +39,14 @@ interface StreamManagementProps {
   creatorId: string;
   userRole?: string;
   currentUserId?: string;
+  streamTitle?: string;
 }
 
 export function StreamManagement({
   creatorId,
   userRole = 'MEMBER',
   currentUserId,
+  streamTitle,
 }: StreamManagementProps) {
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [restrictedUsers, setRestrictedUsers] = useState<RestrictedUser[]>([]);
@@ -234,6 +236,11 @@ export function StreamManagement({
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
               Moderation and Access Control
             </p>
+            {streamTitle && (
+              <p className="text-xs text-blue-400/80 truncate mt-0.5 font-medium">
+                Stream: {streamTitle}
+              </p>
+            )}
           </div>
         </div>
         <Button

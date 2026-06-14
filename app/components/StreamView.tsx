@@ -164,8 +164,8 @@ export default function StreamView({
   const [streamTitle, setStreamTitle] = useState('');
   const [streamGenre, setStreamGenre] = useState('');
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
-  const [showSpotifyPrompt, setShowSpotifyPrompt] = useState(false);
-  const lastRefreshRef = useRef<number>(0);
+   const [showSpotifyPrompt, setShowSpotifyPrompt] = useState(false);
+   const lastRefreshRef = useRef<number>(0);
   const lastAccessPollRef = useRef<number>(0);
   const MAX_HEARTBEAT_FAILURES = 3;
   const debouncedVideoLink = useDebounce(videoLink, 300);
@@ -243,19 +243,19 @@ export default function StreamView({
           setStreamIsPublic(json.creator.isPublic);
         }
 
-        setCurrentVideo((video) => {
-          if (!json.activeStream?.stream) {
-            return null;
-          }
-          setStreamIsPublic(json.creator.isPublic);
-          setViewerCount(json.activeStream.viewerCount);
-          if (video?.id === json.activeStream.stream.id) {
-            return video;
-          }
-          setStreamTitle(json.activeStream.stream.title || '');
-          setStreamGenre(json.activeStream.stream.genre || '');
-          return json.activeStream.stream;
-        });
+         setCurrentVideo((video) => {
+           if (!json.activeStream?.stream) {
+             return null;
+           }
+           setStreamIsPublic(json.creator.isPublic);
+           setViewerCount(json.activeStream.viewerCount);
+           if (video?.id === json.activeStream.stream.id) {
+             return video;
+           }
+           setStreamTitle(json.activeStream.title || '');
+           setStreamGenre(json.activeStream.genre || '');
+           return json.activeStream.stream;
+         });
 
         // Non-blocking: check if creator is already favorited
         fetch('/api/user/favorites')
@@ -1229,9 +1229,14 @@ export default function StreamView({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 pb-16 md:pb-20">
             <div className="lg:col-span-2 space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
-                  Now Playing
-                </h2>
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white truncate">
+                    {streamTitle || 'Untitled Stream'}
+                  </h1>
+                  {currentVideo?.title && (
+                    <p className="text-sm text-gray-400 truncate mt-0.5">{currentVideo.title}</p>
+                  )}
+                </div>
                 <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 w-full sm:w-auto">
                   <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5 shadow-lg w-full sm:w-auto justify-center">
                     <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -1613,6 +1618,7 @@ export default function StreamView({
                   creatorId={creatorId}
                   userRole={streamRole}
                   currentUserId={currentUserId || undefined}
+                  streamTitle={streamTitle}
                 />
               </div>
             </div>

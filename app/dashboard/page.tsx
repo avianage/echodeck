@@ -88,6 +88,10 @@ export default function Dashboard() {
   };
 
   const handleGoLive = async () => {
+    if (!setupTitle.trim()) {
+      toast.error('Stream title is required');
+      return;
+    }
     setIsStarting(true);
     try {
       // Save stream metadata before navigating
@@ -95,7 +99,7 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: setupTitle || 'My EchoDeck Session',
+          title: setupTitle,
           genre: setupGenre || null,
           isPublic: setupPublic,
           clearQueue: clearQueue,
@@ -348,18 +352,21 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-                  Stream Title
-                </label>
-                <input
-                  value={setupTitle}
-                  onChange={(e) => setSetupTitle(e.target.value)}
-                  placeholder="My EchoDeck Session"
-                  className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-600 font-medium text-sm focus:outline-none focus:border-primary/50 transition-colors"
-                />
-              </div>
+             <div className="space-y-4">
+               <div>
+                 <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                   Stream Title <span className="text-red-500">*</span>
+                 </label>
+                 <input
+                   value={setupTitle}
+                   onChange={(e) => setSetupTitle(e.target.value)}
+                   placeholder="My EchoDeck Session"
+                   className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-600 font-medium text-sm focus:outline-none focus:border-primary/50 transition-colors"
+                 />
+                 {!setupTitle.trim() && (
+                   <p className="text-xs text-red-400 mt-1 font-medium">Stream title is required</p>
+                 )}
+               </div>
 
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
@@ -418,14 +425,14 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <button
-              onClick={handleGoLive}
-              disabled={isStarting}
-              className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest rounded-2xl transition-all active:scale-[0.98] shadow-xl shadow-primary/20 flex items-center justify-center gap-3 disabled:opacity-60"
-            >
-              <Play className="w-5 h-5 fill-current" />
-              {isStarting ? 'Setting up...' : 'Go Live'}
-            </button>
+             <button
+               onClick={handleGoLive}
+               disabled={isStarting || !setupTitle.trim()}
+               className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest rounded-2xl transition-all active:scale-[0.98] shadow-xl shadow-primary/20 flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+             >
+               <Play className="w-5 h-5 fill-current" />
+               {isStarting ? 'Setting up...' : 'Go Live'}
+             </button>
           </div>
         </div>
       )}

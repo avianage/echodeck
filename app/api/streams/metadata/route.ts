@@ -6,6 +6,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getStreamRole } from '@/app/lib/getSessionRole';
 import { hasPermission } from '@/app/lib/permissions';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+const MetadataSchema = z.object({
+  streamId: z.string().optional(),
+  title: z.string().min(1).max(100),
+  genre: z.string().optional(),
+  isPublic: z.boolean().optional(),
+  clearQueue: z.boolean().optional(),
+});
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -13,7 +22,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
   }
 
-  const { streamId, title, genre, isPublic, clearQueue } = await req.json();
+  const body = MetadataSchema.parse(await req.json());
+  const { streamId, title, genre, isPublic, clearQueue } = body;
   const userId = session.user.id as string;
 
   try {
