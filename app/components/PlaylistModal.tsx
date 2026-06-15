@@ -57,7 +57,7 @@ export function PlaylistModal({
                   <div className="w-24 h-14 relative flex-shrink-0">
                     {video.thumbnail ? (
                       <Image
-                        src={video.thumbnail.thumbnails?.[0]?.url || ''}
+                        src={typeof video.thumbnail === 'string' ? video.thumbnail : (video.thumbnail.thumbnails?.[0]?.url || '')}
                         alt={video.title}
                         fill
                         sizes="96px"

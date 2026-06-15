@@ -146,6 +146,62 @@ async function getAllSpotifyPlaylistTracks(playlistId: string, sessionAccessToke
   }
 }
 
+async function fetchYouTubePlaylist(playlistId: string) {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': 'SOCS=CAE=',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Origin': 'https://www.youtube.com',
+    },
+    body: JSON.stringify({
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101', hl: 'en', gl: 'US' } },
+      browseId: `VL${playlistId}`,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`InnerTube browse failed: ${res.status}`);
+  const data = await res.json() as Record<string, unknown>;
+
+  // Extract title
+  const header = (data?.header as Record<string, unknown>)?.pageHeaderRenderer as Record<string, unknown> | undefined;
+  const title: string =
+    (header?.pageTitle as string) ||
+    ((header?.content as Record<string, unknown>)?.pageHeaderViewModel as Record<string, unknown>)?.title as string ||
+    'YouTube Playlist';
+
+  // Extract videos from itemSectionRenderer > lockupViewModel items
+  const tabs = ((data?.contents as Record<string, unknown>)?.twoColumnBrowseResultsRenderer as Record<string, unknown>)?.tabs as Array<Record<string, unknown>> | undefined;
+  const contents = (((tabs?.[0]?.tabRenderer as Record<string, unknown>)?.content as Record<string, unknown>)?.sectionListRenderer as Record<string, unknown>)?.contents as Array<Record<string, unknown>> | undefined;
+  const items = ((contents?.[0]?.itemSectionRenderer as Record<string, unknown>)?.contents) as Array<Record<string, unknown>> | undefined;
+
+  if (!items?.length) return null;
+
+  const videos = items
+    .map((item) => {
+      const vm = item?.lockupViewModel as Record<string, unknown> | undefined;
+      if (!vm) return null;
+      const videoId = vm.contentId as string | undefined;
+      if (!videoId) return null;
+      const meta = ((vm.metadata as Record<string, unknown>)?.lockupMetadataViewModel as Record<string, unknown>);
+      const videoTitle = (meta?.title as Record<string, unknown>)?.content as string || 'YouTube Video';
+      const sources = (((vm.contentImage as Record<string, unknown>)?.thumbnailViewModel as Record<string, unknown>)?.image as Record<string, unknown>)?.sources as Array<{ url: string }> | undefined;
+      const thumbnail = sources?.[0]?.url || '';
+      return {
+        id: videoId,
+        title: videoTitle,
+        thumbnail,
+        duration: '',
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+      };
+    })
+    .filter((v): v is NonNullable<typeof v> => v !== null);
+
+  return { title, videos };
+}
+
 const PlaylistSchema = z.object({
   playlistId: z.string().optional(),
   url: z.string().optional(),
@@ -321,32 +377,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Invalid playlist URL or ID' }, { status: 400 });
     }
 
-    // Default to YouTube handling
-    const data = (await YouTubeSearchApi.GetPlaylistData(activePlaylistId)) as {
-      title?: string;
-      items?: Array<{
-        id?: string;
-        title?: string;
-        thumbnail?: { thumbnails?: Array<{ url?: string }> };
-        lengthText?: string;
-      }>;
-    };
+    // Fetch YouTube playlist via InnerTube API (no API key required)
+    const ytData = await fetchYouTubePlaylist(activePlaylistId);
 
-    if (!data || !data.items) {
+    if (!ytData || !ytData.videos.length) {
       return NextResponse.json({ message: 'Playlist not found or empty' }, { status: 404 });
     }
 
-    const ytVideos = data.items?.map((item) => ({
-      id: item.id,
-      title: item.title || 'YouTube Video',
-      thumbnail: item.thumbnail?.thumbnails?.[0]?.url || '',
-      duration: item.lengthText || '',
-      url: `https://www.youtube.com/watch?v=${item.id}`,
-    }));
-
     return NextResponse.json({
-      title: data?.title || 'YouTube Playlist',
-      videos: ytVideos,
+      title: ytData.title,
+      videos: ytData.videos,
     });
   } catch (e) {
      

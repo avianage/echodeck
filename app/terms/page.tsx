@@ -15,7 +15,14 @@ const sections = [
     id: 'description-of-service',
     title: 'Description of Service',
     paragraphs: [
-      'EchoDeck is a collaborative music queue and streaming coordination tool. Users can create streams, queue music, and listen together in real time.',
+      'EchoDeck is a collaborative music queue and real-time streaming coordination tool. Users can create streams, queue music from YouTube and Spotify, vote on track order, and listen together. Creators can manage their streams, assign moderators, and control access. EchoDeck is a coordination and discovery tool — it is not a music streaming service or content host.',
+    ],
+  },
+  {
+    id: 'eligibility',
+    title: 'Eligibility',
+    paragraphs: [
+      'You must be at least 13 years old to use EchoDeck. If you are under 18, you must have permission from a parent or legal guardian. By using EchoDeck, you represent that you meet these requirements.',
     ],
   },
   {
@@ -24,7 +31,6 @@ const sections = [
     paragraphs: [
       "YouTube: All video and audio content played through EchoDeck is sourced directly from YouTube and played back using the official YouTube IFrame Player API. All content remains on YouTube's infrastructure and is subject to YouTube's Terms of Service at youtube.com/t/terms and the rights of the respective content creators and rights holders. EchoDeck does not host, download, cache, or redistribute any YouTube content. We are not responsible for the availability, accuracy, or legality of any content accessible via YouTube.",
       "Spotify: Track metadata, search results, and album artwork displayed in EchoDeck may be sourced via the Spotify Web API. EchoDeck does not stream, host, or store any Spotify audio content. All Spotify content is subject to Spotify's Terms of Service at spotify.com/legal/end-user-agreement.",
-      'EchoDeck is a coordination and discovery tool. We are not a content provider or music streaming service.',
     ],
   },
   {
@@ -34,8 +40,20 @@ const sections = [
     items: [
       'You must not queue content that infringes third party intellectual property rights.',
       "You must not use EchoDeck in violation of YouTube's or Spotify's Terms of Service.",
-      'You must not use EchoDeck to circumvent any content protection or access restrictions.',
+      'You must not use EchoDeck to circumvent content protection, regional restrictions, or access controls.',
+      'You must not harass, abuse, threaten, or impersonate other users.',
+      'You must not attempt to evade a ban or suspension by creating alternate accounts.',
+      'You must not interfere with the service, including submitting automated requests or exploiting vulnerabilities.',
       'You are solely responsible for the content you add to queues.',
+    ],
+  },
+  {
+    id: 'streams-and-moderation',
+    title: 'Streams and Moderation',
+    paragraphs: [
+      'Creators are responsible for the content queued in their streams and for managing their audience. Creators may assign stream-level moderators to help enforce these terms within their sessions.',
+      'EchoDeck reserves the right to remove content, suspend streams, or take action against accounts that violate these terms, regardless of whether a creator or moderator has intervened.',
+      'Private streams require creator approval for access. Misuse of the access request system, including spamming creators with requests, may result in account suspension.',
     ],
   },
   {
@@ -57,21 +75,36 @@ const sections = [
     id: 'account-termination',
     title: 'Account Termination',
     paragraphs: [
-      'We reserve the right to suspend or terminate accounts that repeatedly violate copyright or these Terms of Service.',
+      'We reserve the right to suspend or terminate accounts for violations of these terms, including but not limited to repeated copyright infringement, harassment, ban evasion, or abuse of the platform.',
+      'Timed and permanent bans may be issued at the discretion of platform moderators or owners. You may contact us at the email below to appeal a ban.',
+    ],
+  },
+  {
+    id: 'payments',
+    title: 'Payments',
+    paragraphs: [
+      'If EchoDeck offers paid features, all payments are processed by Razorpay. By making a payment, you also agree to Razorpay\'s Terms of Service at razorpay.com/terms. EchoDeck does not store payment card information. Refund eligibility will be communicated at the point of purchase.',
     ],
   },
   {
     id: 'disclaimer-of-warranties',
     title: 'Disclaimer of Warranties',
     paragraphs: [
-      'EchoDeck is provided as is and as available. We do not guarantee uptime, uninterrupted access, availability, accuracy, or error-free operation.',
+      'EchoDeck is provided as is and as available. We do not guarantee uptime, uninterrupted access, availability, accuracy, or error-free operation. Third party content availability (YouTube, Spotify) is outside our control and may change without notice.',
     ],
   },
   {
     id: 'limitation-of-liability',
     title: 'Limitation of Liability',
     paragraphs: [
-      'To the maximum extent permitted by law, EchoDeck is not liable for indirect, incidental, special, consequential, or punitive damages arising from your use of the service.',
+      'To the maximum extent permitted by law, EchoDeck is not liable for indirect, incidental, special, consequential, or punitive damages arising from your use of the service, including loss of data, loss of access, or third party content becoming unavailable.',
+    ],
+  },
+  {
+    id: 'governing-law',
+    title: 'Governing Law',
+    paragraphs: [
+      'These terms are governed by and construed in accordance with the laws of India. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts located in India.',
     ],
   },
   {
@@ -91,7 +124,7 @@ const sections = [
 export const metadata: Metadata = {
   title: 'Terms of Service | EchoDeck',
   description:
-    'EchoDeck Terms of Service covering account use, third party content, copyright, and user responsibilities.',
+    'EchoDeck Terms of Service covering account use, third party content, copyright, moderation, and user responsibilities.',
   alternates: {
     canonical: 'https://echodeck.avianage.in/terms',
   },
@@ -102,7 +135,7 @@ export default function TermsPage() {
     <LegalPage
       title="Terms of Service"
       description="These terms describe the rules for using EchoDeck, including collaborative queues, third party playback, copyright responsibilities, and account limitations."
-      lastUpdated="May 1, 2026"
+      lastUpdated="June 16, 2026"
       sections={sections}
     />
   );
