@@ -4,10 +4,33 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as Record<string, unknown>)?.id as string;
   if (!userId) return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
+
+  const direction = req.nextUrl.searchParams.get('direction') === 'outgoing' ? 'outgoing' : 'incoming';
+
+  if (direction === 'outgoing') {
+    const outgoing = await prismaClient.friendship.findMany({
+      where: {
+        requesterId: userId,
+        status: 'PENDING',
+      },
+      include: {
+        addressee: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            image: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({ requests: outgoing });
+  }
 
   const requests = await prismaClient.friendship.findMany({
     where: {

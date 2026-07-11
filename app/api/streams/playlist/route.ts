@@ -20,6 +20,57 @@ const spotifyUrlInfo = spotifyUrlInfoModule as unknown as (fetch: typeof globalT
 };
 const { getTracks } = spotifyUrlInfo(fetch);
 
+// Cache YouTube-match lookups by search query so repeated imports of the same
+// tracks (popular songs show up across many playlists) don't re-hit the
+// external search API every time. TTL keeps stale/removed videos from lingering.
+const YT_MATCH_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const ytMatchCache = new Map<
+  string,
+  { id: string | null; thumbnail: string; expiresAt: number }
+>();
+
+async function resolveYouTubeMatch(query: string) {
+  const cached = ytMatchCache.get(query);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+
+  try {
+    const res = await YouTubeSearchApi.GetListByKeyword(query, false, 5, [{ type: 'video' }]);
+    const items = res?.items || [];
+    const first = items[0];
+    const result = {
+      id: first?.id ?? null,
+      thumbnail: first?.thumbnail?.thumbnails?.[0]?.url ?? '',
+      expiresAt: Date.now() + YT_MATCH_CACHE_TTL_MS,
+    };
+    ytMatchCache.set(query, result);
+    return result;
+  } catch {
+    return { id: null, thumbnail: '', expiresAt: 0 };
+  }
+}
+
+// Runs async work over `items` with at most `concurrency` in flight at once,
+// so a large playlist import doesn't fire off hundreds of simultaneous
+// external requests (which was causing the resolver to self-throttle/timeout).
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
 function formatDurationMs(durationMs: number | null | undefined) {
   if (!durationMs || durationMs <= 0) return '';
   const totalSeconds = Math.floor(durationMs / 1000);
@@ -146,6 +197,93 @@ async function getAllSpotifyPlaylistTracks(playlistId: string, sessionAccessToke
   }
 }
 
+// Loosely mirrors the InnerTube `browse` response shape used below. Every
+// field is optional/nullable because this is an unofficial, undocumented
+// endpoint that YouTube can reshape at any time without notice — validating
+// here means a shape change fails safely (returns null) instead of throwing
+// deep inside a chain of `as` casts.
+const InnerTubeThumbnailSourceSchema = z.object({ url: z.string() });
+
+const InnerTubeLockupViewModelSchema = z.object({
+  contentId: z.string().optional(),
+  metadata: z
+    .object({
+      lockupMetadataViewModel: z
+        .object({
+          title: z.object({ content: z.string().optional() }).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  contentImage: z
+    .object({
+      thumbnailViewModel: z
+        .object({
+          image: z
+            .object({ sources: z.array(InnerTubeThumbnailSourceSchema).optional() })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+const InnerTubeItemSchema = z.object({
+  lockupViewModel: InnerTubeLockupViewModelSchema.optional(),
+});
+
+const InnerTubeBrowseResponseSchema = z.object({
+  header: z
+    .object({
+      pageHeaderRenderer: z
+        .object({
+          pageTitle: z.string().optional(),
+          content: z
+            .object({
+              pageHeaderViewModel: z.object({ title: z.string().optional() }).optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  contents: z
+    .object({
+      twoColumnBrowseResultsRenderer: z
+        .object({
+          tabs: z
+            .array(
+              z.object({
+                tabRenderer: z
+                  .object({
+                    content: z
+                      .object({
+                        sectionListRenderer: z
+                          .object({
+                            contents: z
+                              .array(
+                                z.object({
+                                  itemSectionRenderer: z
+                                    .object({ contents: z.array(InnerTubeItemSchema).optional() })
+                                    .optional(),
+                                }),
+                              )
+                              .optional(),
+                          })
+                          .optional(),
+                      })
+                      .optional(),
+                  })
+                  .optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
 async function fetchYouTubePlaylist(playlistId: string) {
   const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
     method: 'POST',
@@ -163,31 +301,37 @@ async function fetchYouTubePlaylist(playlistId: string) {
   });
 
   if (!res.ok) throw new Error(`InnerTube browse failed: ${res.status}`);
-  const data = await res.json() as Record<string, unknown>;
+  const raw = await res.json();
+
+  const parsed = InnerTubeBrowseResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn(
+      { issues: parsed.error.issues, topLevelKeys: Object.keys(raw ?? {}) },
+      'InnerTube browse response did not match expected shape (YouTube may have changed it)',
+    );
+    return null;
+  }
+  const data = parsed.data;
 
   // Extract title
-  const header = (data?.header as Record<string, unknown>)?.pageHeaderRenderer as Record<string, unknown> | undefined;
-  const title: string =
-    (header?.pageTitle as string) ||
-    ((header?.content as Record<string, unknown>)?.pageHeaderViewModel as Record<string, unknown>)?.title as string ||
-    'YouTube Playlist';
+  const header = data.header?.pageHeaderRenderer;
+  const title = header?.pageTitle || header?.content?.pageHeaderViewModel?.title || 'YouTube Playlist';
 
   // Extract videos from itemSectionRenderer > lockupViewModel items
-  const tabs = ((data?.contents as Record<string, unknown>)?.twoColumnBrowseResultsRenderer as Record<string, unknown>)?.tabs as Array<Record<string, unknown>> | undefined;
-  const contents = (((tabs?.[0]?.tabRenderer as Record<string, unknown>)?.content as Record<string, unknown>)?.sectionListRenderer as Record<string, unknown>)?.contents as Array<Record<string, unknown>> | undefined;
-  const items = ((contents?.[0]?.itemSectionRenderer as Record<string, unknown>)?.contents) as Array<Record<string, unknown>> | undefined;
+  const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs;
+  const contents = tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents;
+  const items = contents?.[0]?.itemSectionRenderer?.contents;
 
   if (!items?.length) return null;
 
   const videos = items
     .map((item) => {
-      const vm = item?.lockupViewModel as Record<string, unknown> | undefined;
+      const vm = item.lockupViewModel;
       if (!vm) return null;
-      const videoId = vm.contentId as string | undefined;
+      const videoId = vm.contentId;
       if (!videoId) return null;
-      const meta = ((vm.metadata as Record<string, unknown>)?.lockupMetadataViewModel as Record<string, unknown>);
-      const videoTitle = (meta?.title as Record<string, unknown>)?.content as string || 'YouTube Video';
-      const sources = (((vm.contentImage as Record<string, unknown>)?.thumbnailViewModel as Record<string, unknown>)?.image as Record<string, unknown>)?.sources as Array<{ url: string }> | undefined;
+      const videoTitle = vm.metadata?.lockupMetadataViewModel?.title?.content || 'YouTube Video';
+      const sources = vm.contentImage?.thumbnailViewModel?.image?.sources;
       const thumbnail = sources?.[0]?.url || '';
       return {
         id: videoId,
@@ -316,44 +460,27 @@ export async function POST(req: NextRequest) {
               return v.url !== '' || v.id !== '';
             });
 
-          // For each Spotify track, try to resolve a YouTube video
-          const resolvedVideos = await Promise.all(
-            baseVideos.map(async (video) => {
-              try {
-                const tryResolution = async (query: string) => {
-                  try {
-                    const res = await YouTubeSearchApi.GetListByKeyword(query, false, 5, [
-                      { type: 'video' },
-                    ]);
-                    return res?.items || [];
-                  } catch (err) {
-                    return [];
-                  }
-                };
+          // For each Spotify track, try to resolve a YouTube video. Capped
+          // concurrency + a shared cache keep large playlist imports from
+          // firing hundreds of simultaneous external search requests.
+          const resolvedVideos = await mapWithConcurrency(baseVideos, 5, async (video) => {
+            try {
+              const match = await resolveYouTubeMatch(video.title);
+              if (!match.id) return video;
 
-                 
-                logger.info(`🔍 Resolving Spotify track from playlist: ${video.title}`);
-                const items = await tryResolution(video.title);
-                if (items.length === 0) return video;
-
-                const ytId = items[0].id;
-                if (!ytId) return video;
-
-                return {
-                  ...video,
-                  id: ytId,
-                  thumbnail: items[0].thumbnail?.thumbnails?.[0]?.url ?? video.thumbnail ?? '',
-                  isSpotify: false,
-                  url: `https://www.youtube.com/watch?v=${ytId}`,
-                  source: 'spotify-web-api-node',
-                };
-              } catch (err) {
-                 
-                logger.error({ err: err }, `YouTube resolution failed for Spotify track: ${video.title}`);
-                return video;
-              }
-            }),
-          );
+              return {
+                ...video,
+                id: match.id,
+                thumbnail: match.thumbnail || video.thumbnail || '',
+                isSpotify: false,
+                url: `https://www.youtube.com/watch?v=${match.id}`,
+                source: 'spotify-web-api-node',
+              };
+            } catch (err) {
+              logger.error({ err }, `YouTube resolution failed for Spotify track: ${video.title}`);
+              return video;
+            }
+          });
 
           return NextResponse.json({
             title: playlistTitle,

@@ -21,28 +21,39 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') ?? '';
   const pageSize = 20;
 
-  const users = await prismaClient.user.findMany({
-    where: {
-      OR: [
-        { username: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ],
-    },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      email: true,
-      platformRole: true,
-      isBanned: true,
-      bannedUntil: true,
-      banReason: true,
-      createdAt: true,
-    },
-    skip: (page - 1) * pageSize,
-    take: pageSize,
-    orderBy: { createdAt: 'desc' },
-  });
+  const where = {
+    OR: [
+      { username: { contains: search, mode: 'insensitive' as const } },
+      { email: { contains: search, mode: 'insensitive' as const } },
+    ],
+  };
 
-  return NextResponse.json({ users });
+  const [users, totalCount] = await Promise.all([
+    prismaClient.user.findMany({
+      where,
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        email: true,
+        platformRole: true,
+        isBanned: true,
+        bannedUntil: true,
+        banReason: true,
+        createdAt: true,
+      },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      orderBy: { createdAt: 'desc' },
+    }),
+    prismaClient.user.count({ where }),
+  ]);
+
+  return NextResponse.json({
+    users,
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.ceil(totalCount / pageSize),
+  });
 }

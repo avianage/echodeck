@@ -1,40 +1,9 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { create as createYtDlp } from 'yt-dlp-exec';
 import { authOptions } from '@/app/lib/auth';
 import { getServerSession } from 'next-auth';
 import { isRateLimited } from '@/app/lib/rateLimit';
-
-interface CacheEntry {
-  url: string;
-  format: string;
-  expiresAt: number;
-}
-
-const streamCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_HOURS || '4', 10) * 60 * 60 * 1000;
-
-function getCached(videoId: string): CacheEntry | null {
-  const entry = streamCache.get(videoId);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    streamCache.delete(videoId);
-    return null;
-  }
-  return entry;
-}
-
-function _setCache(videoId: string, url: string, format: string): void {
-  streamCache.set(videoId, {
-    url,
-    format,
-    expiresAt: Date.now() + CACHE_TTL_MS,
-  });
-}
-
-// Use the system yt-dlp binary (installed via apk in Docker or present in PATH locally)
-// If yt-dlp-exec is passed undefined, it defaults to searching for 'yt-dlp' in PATH
-const _ytDlp = createYtDlp(process.env.NODE_ENV === 'production' ? 'yt-dlp' : undefined);
+import { resolveAudioUrl } from '@/app/lib/ytdlp';
 
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
@@ -67,18 +36,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid videoId format' }, { status: 400 });
   }
 
-  const cached = getCached(videoId);
-  if (cached) {
-     
-    logger.info(`✅ Cache hit for ${videoId}`);
-    return NextResponse.json({ url: cached.url, format: cached.format });
-  }
-
   try {
-     
+
     logger.info(`📡 Resolving stream for: ${videoId} using yt-dlp`);
-    // Note: The actual resolution logic would go here,
-    // using ytDlp instance which is now correctly configured.
+    const url = await resolveAudioUrl(videoId);
+    return NextResponse.json({ url, format: 'bestaudio' });
   } catch (e) {
      
     logger.error({ err: e }, '❌ Stream Resolution Error:');

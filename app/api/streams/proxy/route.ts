@@ -8,7 +8,10 @@ const ALLOWED_HOSTS = ['googlevideo.com', 'youtube.com', 'ytimg.com'];
 function isAllowedUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
-    return ALLOWED_HOSTS.some((host) => parsed.hostname.endsWith(host));
+    return (
+      parsed.protocol === 'https:' &&
+      ALLOWED_HOSTS.some((host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))
+    );
   } catch {
     return false;
   }

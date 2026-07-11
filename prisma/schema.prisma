@@ -44,6 +44,12 @@ model User {
   pendingApprovals      StreamAccess[]     @relation("streamer")
   accessGrants          StreamAccess[]     @relation("viewer")
   upvotes               Upvote[]
+  playlists             Playlist[]
+  sentChatMessages      ChatMessage[]      @relation("chatSender")
+  receivedChatMessages  ChatMessage[]      @relation("chatCreator")
+  jamInvitesAsCreator   JamInvite[]        @relation("JamInviteCreator")
+  jamInvitesSent        JamInvite[]        @relation("JamInviteInviter")
+  jamInvitesReceived    JamInvite[]        @relation("JamInviteInvitee")
 }
 
 model Account {
@@ -103,6 +109,45 @@ model Stream {
   addedBy       User           @relation("addedBy", fields: [addedById], references: [id], onDelete: Cascade)
   user          User           @relation("user", fields: [userId], references: [id], onDelete: Cascade)
   upvotes       Upvote[]
+
+  @@index([userId, played])
+}
+
+model Playlist {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks    PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  id          String     @id @default(cuid())
+  playlistId  String
+  url         String
+  extractedId String
+  type        StreamType
+  title       String     @default("")
+  smallImg    String     @default("")
+  bigImg      String     @default("")
+  order       Int        @default(0)
+  addedAt     DateTime   @default(now())
+  playlist    Playlist   @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id        String    @id @default(cuid())
+  creatorId String
+  userId    String
+  message   String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  creator   User      @relation("chatCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  user      User      @relation("chatSender", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId, createdAt])
 }
 
 model CurrentStream {
@@ -111,11 +156,15 @@ model CurrentStream {
   currentTime Float    @default(0)
   isPaused    Boolean  @default(false)
   updatedAt   DateTime @updatedAt
-  viewerCount Int      @default(0)
-  genre       String?
-  title       String?
-  stream      Stream?  @relation(fields: [streamId], references: [id])
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  viewerCount     Int      @default(0)
+  peakViewerCount Int      @default(0)
+  genre           String?
+  title           String?
+  mode            String   @default("BROADCAST") // "BROADCAST" | "JAM" — fixed at session start
+  slowModeSeconds Int      @default(0) // chat cooldown per non-mod sender; 0 = off, adjustable mid-session
+  pinnedMessageId String?
+  stream          Stream?  @relation(fields: [streamId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SessionMember {
@@ -124,6 +173,7 @@ model SessionMember {
   creatorId   String
   role        StreamRole @default(MEMBER)
   joinedAt    DateTime   @default(now())
+  lastSeenAt  DateTime   @default(now())
   isBanned    Boolean    @default(false)
   banReason   String?
   bannedUntil DateTime?
@@ -131,6 +181,8 @@ model SessionMember {
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, creatorId])
+  @@index([creatorId, lastSeenAt])
+  @@index([creatorId, role])
 }
 
 model Friendship {
@@ -198,6 +250,21 @@ model StreamEvent {
   expiresAt DateTime
 }
 
+model JamInvite {
+  id        String          @id @default(cuid())
+  creatorId String // whose jam session
+  inviterId String // who sent it (creator or a jam member with playback rights)
+  inviteeId String // recipient, must be an accepted friend of the inviter
+  createdAt DateTime        @default(now())
+  expiresAt DateTime // createdAt + 10 minutes
+  status    JamInviteStatus @default(PENDING)
+  creator   User            @relation("JamInviteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  inviter   User            @relation("JamInviteInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee   User            @relation("JamInviteInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@index([inviteeId, status])
+}
+
 enum PlatformRole {
   MEMBER
   CREATOR
@@ -242,6 +309,13 @@ enum StreamEventType {
   MOD_DEMOTED
   SONG_REMOVED_BY_MOD
   SONG_SKIPPED_BY_CREATOR
+}
+
+enum JamInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
 }
 
 model MaintenanceMode {

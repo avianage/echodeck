@@ -2,15 +2,19 @@ import { prismaClient } from '@/app/lib/db';
 import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { authOptions } from '@/app/lib/auth';
 import { getStreamRole } from '@/app/lib/getSessionRole';
-import { hasPermission as _hasPermission } from '@/app/lib/permissions';
+import { hasPermission } from '@/app/lib/permissions';
 import { broadcastToStream } from '@/app/lib/sseManager';
+import { ACTIVE_VIEWER_WINDOW_MS } from '@/app/lib/presence';
 import { logger } from '@/lib/logger';
+
+type CurrentStreamWithStream = Prisma.CurrentStreamGetPayload<{ include: { stream: true } }>;
 
 const HeartbeatSchema = z.object({
   creatorId: z.string(),
-  currentTime: z.number().optional(),
+  currentTime: z.number().min(0).finite().optional(),
   isPaused: z.boolean().optional(),
 });
 
@@ -46,19 +50,49 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const data = HeartbeatSchema.parse(body);
 
-    // If it's the creator (or OWNER), update the state
-    if (
-      (userId === data.creatorId || user?.platformRole === 'OWNER') &&
-      data.currentTime !== undefined
-    ) {
-      const existing = await prismaClient.currentStream.findUnique({
+    // Fast path: the literal creator/owner pushing a state update never needs
+    // a role or mode lookup — preserve the original single-query cost for
+    // the hot creator-heartbeat path. Anything else (including the creator
+    // falling through to listener logic when their player isn't ready yet)
+    // takes the full fetch below so streamRole/creator stay correct.
+    const isCreatorOrOwner = userId === data.creatorId || user?.platformRole === 'OWNER';
+    const takeFastPath = isCreatorOrOwner && data.currentTime !== undefined;
+
+    let currentStream: CurrentStreamWithStream | null = null;
+    let listenerActivity: Awaited<ReturnType<typeof prismaClient.listeningActivity.findUnique>> =
+      null;
+    let creator: { isPublic: boolean } | null = null;
+    let streamRole: Awaited<ReturnType<typeof getStreamRole>> = 'GUEST';
+    let canPushState = isCreatorOrOwner;
+
+    if (takeFastPath) {
+      currentStream = await prismaClient.currentStream.findUnique({
         where: { userId: data.creatorId },
+        include: { stream: true },
       });
+    } else {
+      [currentStream, listenerActivity, creator, streamRole] = await Promise.all([
+        prismaClient.currentStream.findUnique({
+          where: { userId: data.creatorId },
+          include: { stream: true },
+        }),
+        prismaClient.listeningActivity.findUnique({
+          where: { userId: user.id },
+        }),
+        prismaClient.user.findUnique({
+          where: { id: data.creatorId },
+          select: { isPublic: true },
+        }),
+        getStreamRole(user.id, data.creatorId),
+      ]);
 
-      const _timeDrift = Math.abs((existing?.currentTime ?? 0) - data.currentTime);
+      const mode = (currentStream?.mode as 'BROADCAST' | 'JAM' | undefined) ?? 'BROADCAST';
+      canPushState =
+        isCreatorOrOwner || (mode === 'JAM' && hasPermission(streamRole, 'playback:play', mode));
+    }
 
-      const _pauseChanged = existing?.isPaused !== data.isPaused;
-
+    // If it's the creator/owner, or a jam member with playback rights, push state
+    if (canPushState && data.currentTime !== undefined) {
       // Always update updatedAt to prevent listener staleness during pause
       await prismaClient.currentStream.upsert({
         where: { userId: data.creatorId },
@@ -75,8 +109,6 @@ export async function POST(req: NextRequest) {
       });
 
       // Push state immediately to all connected SSE viewers
-      const _serverNow = Date.now();
-      const _staleness = 0; // host just wrote — no staleness
       broadcastToStream(data.creatorId, {
         currentTime: data.currentTime,
         computedTime: data.currentTime,
@@ -89,22 +121,6 @@ export async function POST(req: NextRequest) {
     }
 
     // --- LISTENER / VIEWER LOGIC ---
-    // 1. Fetch current state and previous activity
-    const [currentStream, listenerActivity, creator, streamRole] = await Promise.all([
-      prismaClient.currentStream.findUnique({
-        where: { userId: data.creatorId },
-        include: { stream: true },
-      }),
-      prismaClient.listeningActivity.findUnique({
-        where: { userId: user.id },
-      }),
-      prismaClient.user.findUnique({
-        where: { id: data.creatorId },
-        select: { isPublic: true },
-      }),
-      getStreamRole(user.id, data.creatorId),
-    ]);
-
     if (streamRole === 'BANNED') {
       return NextResponse.json({ message: 'Access restricted' }, { status: 403 });
     }
@@ -134,35 +150,57 @@ export async function POST(req: NextRequest) {
     if (user?.platformRole !== 'OWNER') {
       const activeStream = currentStream?.stream;
 
-      await prismaClient.listeningActivity.upsert({
-        where: { userId: user.id },
-        update: {
-          creatorId: data.creatorId,
-          songTitle: activeStream?.title ?? null,
-          songId: activeStream?.extractedId ?? null,
-          updatedAt: new Date(),
-        },
-        create: {
-          userId: user.id,
-          creatorId: data.creatorId,
-          songTitle: activeStream?.title ?? null,
-          songId: activeStream?.extractedId ?? null,
-        },
-      });
+      await Promise.all([
+        prismaClient.listeningActivity.upsert({
+          where: { userId: user.id },
+          update: {
+            creatorId: data.creatorId,
+            songTitle: activeStream?.title ?? null,
+            songId: activeStream?.extractedId ?? null,
+            updatedAt: new Date(),
+          },
+          create: {
+            userId: user.id,
+            creatorId: data.creatorId,
+            songTitle: activeStream?.title ?? null,
+            songId: activeStream?.extractedId ?? null,
+          },
+        }),
+        // Track every viewer who has ever watched this creator (not just mods/banned
+        // users) so past viewers can be found and managed even after they go offline.
+        prismaClient.sessionMember.upsert({
+          where: { userId_creatorId: { userId: user.id, creatorId: data.creatorId } },
+          update: { lastSeenAt: new Date() },
+          create: { userId: user.id, creatorId: data.creatorId, lastSeenAt: new Date() },
+        }),
+      ]);
 
       const activeCount = await prismaClient.listeningActivity.count({
         where: {
           creatorId: data.creatorId,
           updatedAt: {
-            gte: new Date(Date.now() - parseInt(process.env.HEARTBEAT_INTERVAL_MS || '10000', 10)),
+            gte: new Date(Date.now() - ACTIVE_VIEWER_WINDOW_MS),
           },
         },
       });
 
-      await prismaClient.currentStream.update({
-        where: { userId: data.creatorId },
-        data: { viewerCount: activeCount },
-      });
+      // Only write viewerCount/peakViewerCount when the count actually
+      // changed — otherwise every single listener heartbeat writes this row.
+      const peakViewerCount = Math.max(activeCount, currentStream?.peakViewerCount ?? 0);
+      if (
+        activeCount !== currentStream?.viewerCount ||
+        peakViewerCount !== currentStream?.peakViewerCount
+      ) {
+        await prismaClient.currentStream.update({
+          where: { userId: data.creatorId },
+          data: {
+            viewerCount: activeCount,
+            // peakViewerCount has no historical record otherwise — viewerCount
+            // is overwritten every heartbeat with only the live value.
+            peakViewerCount: { set: peakViewerCount },
+          },
+        });
+      }
     }
 
     // 4. Return sync data and events

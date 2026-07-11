@@ -1,5 +1,6 @@
 export type PlatformRole = 'OWNER' | 'CREATOR' | 'MEMBER' | 'GUEST';
 export type StreamRole = 'OWNER' | 'CREATOR' | 'MODERATOR' | 'MEMBER' | 'GUEST' | 'BANNED';
+export type SessionMode = 'BROADCAST' | 'JAM';
 
 export type Permission =
   | 'stream:create'
@@ -24,7 +25,9 @@ export type Permission =
   | 'platform:view:all:streams'
   | 'platform:manage:streams'
   | 'access:manage'
-  | 'stream:update';
+  | 'stream:update'
+  | 'chat:send'
+  | 'chat:moderate';
 
 const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
   OWNER: [
@@ -51,6 +54,8 @@ const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
     'platform:manage:streams',
     'access:manage',
     'stream:update',
+    'chat:send',
+    'chat:moderate',
   ],
   CREATOR: [
     'stream:create',
@@ -69,6 +74,8 @@ const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
     'session:promote:mod',
     'access:manage',
     'stream:update',
+    'chat:send',
+    'chat:moderate',
   ],
   MODERATOR: [
     'queue:add',
@@ -80,12 +87,28 @@ const STREAM_ROLE_PERMISSIONS: Record<StreamRole, Permission[]> = {
     'session:timeout:stream',
     'access:manage',
     'stream:update',
+    'chat:send',
+    'chat:moderate',
   ],
-  MEMBER: ['queue:add', 'queue:remove:own', 'vote:cast'],
+  MEMBER: ['queue:add', 'queue:remove:own', 'vote:cast', 'chat:send'],
   GUEST: [],
   BANNED: [],
 };
 
-export function hasPermission(role: StreamRole, permission: Permission): boolean {
-  return STREAM_ROLE_PERMISSIONS[role].includes(permission);
+// Additive-only permissions granted on top of STREAM_ROLE_PERMISSIONS when a
+// session's mode is 'JAM' — a jam shares playback control among members
+// without touching moderation/access powers (ban, promote, clear, etc. stay
+// gated exactly as in broadcast mode).
+const JAM_ROLE_OVERRIDES: Partial<Record<StreamRole, Permission[]>> = {
+  MEMBER: ['playback:play', 'playback:pause', 'playback:skip'],
+};
+
+export function hasPermission(
+  role: StreamRole,
+  permission: Permission,
+  mode?: SessionMode,
+): boolean {
+  if (STREAM_ROLE_PERMISSIONS[role].includes(permission)) return true;
+  if (mode === 'JAM' && JAM_ROLE_OVERRIDES[role]?.includes(permission)) return true;
+  return false;
 }

@@ -37,20 +37,35 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const [isApiLoaded, setIsApiLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     // Load YouTube IFrame API script
     if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      }
 
+      // Multiple YouTubePlayer instances (or a fast remount) would otherwise
+      // each overwrite this global, silently dropping every callback but the
+      // last one to attach — chain onto whatever is already registered.
+      const previousCallback = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => {
-        setIsApiLoaded(true);
+        previousCallback?.();
+        if (!cancelled) setIsApiLoaded(true);
       };
     } else {
       // Use setTimeout to avoid setState during render
-      setTimeout(() => setIsApiLoaded(true), 0);
+      setTimeout(() => {
+        if (!cancelled) setIsApiLoaded(true);
+      }, 0);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -103,7 +118,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         playerRef.current.pauseVideo();
       }
     } catch (e) {
-      // Player might not be fully ready yet
+      // eslint-disable-next-line no-console
+      console.warn('YouTubePlayer: play/pause toggle failed (player may not be ready yet)', e);
     }
   }, [playing]);
 

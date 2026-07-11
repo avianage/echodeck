@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prismaClient } from '@/app/lib/db';
 import { logger } from '@/lib/logger';
+import { isRecentlyActive } from '@/app/lib/presence';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
         platformRole: true,
         allowFriendRequests: true,
         partyCode: true,
+        isPublic: true,
         currentStream: {
           select: {
             updatedAt: true,
@@ -35,9 +37,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       return NextResponse.json({ message: 'User not found' }, { status: 404 });
     }
 
-    // Consistent live detection (15s heartbeat window)
-    const isLive =
-      user.currentStream && Date.now() - new Date(user.currentStream.updatedAt).getTime() < 15000;
+    // Previously this route ignored isPublic entirely, so the privacy
+    // toggle in /api/user/privacy did nothing here — a private profile's
+    // full details (live status, partyCode, etc.) were still served to
+    // anyone. Return only the minimal public-facing fields when private.
+    if (!user.isPublic) {
+      return NextResponse.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          image: user.image,
+          isPublic: false,
+        },
+      });
+    }
+
+    const isLive = !!user.currentStream && isRecentlyActive(user.currentStream.updatedAt);
 
     return NextResponse.json({
       user: {
@@ -48,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
         platformRole: user.platformRole,
         allowFriendRequests: user.allowFriendRequests,
         partyCode: user.partyCode,
+        isPublic: true,
         isLive: !!isLive,
       },
     });

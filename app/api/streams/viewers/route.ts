@@ -3,7 +3,10 @@ import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/app/lib/auth';
 import { getStreamRole } from '@/app/lib/getSessionRole';
+import { ACTIVE_VIEWER_WINDOW_MS } from '@/app/lib/presence';
 import { logger } from '@/lib/logger';
+
+const MAX_VIEWERS_RETURNED = 500;
 
 export async function GET(req: NextRequest) {
   try {
@@ -35,13 +38,15 @@ export async function GET(req: NextRequest) {
     });
     const restrictedSet = new Set(restricted.map((r) => r.userId));
 
-    // Fetch users who updated their heartbeat in the last 20 seconds
+    // Fetch users who updated their heartbeat within the active window
     const activeViewers = await prismaClient.listeningActivity.findMany({
       where: {
         creatorId,
-        updatedAt: { gte: new Date(Date.now() - 20000) },
+        updatedAt: { gte: new Date(Date.now() - ACTIVE_VIEWER_WINDOW_MS) },
         userId: { notIn: Array.from(restrictedSet) },
       },
+      orderBy: { updatedAt: 'desc' },
+      take: MAX_VIEWERS_RETURNED,
       include: {
         user: {
           select: {

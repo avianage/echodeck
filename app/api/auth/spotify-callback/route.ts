@@ -1,13 +1,19 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
 import { logger } from '@/lib/logger';
+import { encryptToken } from '@/app/lib/tokenCrypto';
+import { verifyOAuthState } from '@/app/lib/oauthState';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const userId = req.nextUrl.searchParams.get('state');
+  const state = req.nextUrl.searchParams.get('state');
 
-  if (!code || !userId) {
+  const verifiedState = state ? verifyOAuthState(state) : null;
+
+  if (!code || !verifiedState) {
     return NextResponse.redirect(
       new URL(
         '/account?error=spotify_link_failed',
@@ -15,6 +21,20 @@ export async function GET(req: NextRequest) {
       ),
     );
   }
+
+  const session = await getServerSession(authOptions);
+  const sessionUserId = session?.user?.id;
+
+  if (!sessionUserId || sessionUserId !== verifiedState.userId) {
+    return NextResponse.redirect(
+      new URL(
+        '/account?error=spotify_link_failed',
+        process.env.NEXTAUTH_URL || 'https://echodeck.avianage.in',
+      ),
+    );
+  }
+
+  const userId = sessionUserId;
 
   try {
     // Exchange code for tokens
@@ -45,8 +65,8 @@ export async function GET(req: NextRequest) {
       where: { id: userId },
       data: {
         spotifyConnected: true,
-        spotifyAccessToken: tokens.access_token,
-        spotifyRefreshToken: tokens.refresh_token,
+        spotifyAccessToken: encryptToken(tokens.access_token),
+        spotifyRefreshToken: encryptToken(tokens.refresh_token),
         spotifyTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
       },
     });

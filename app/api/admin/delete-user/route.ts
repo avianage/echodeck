@@ -49,21 +49,38 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: 'Cannot delete another owner' }, { status: 403 });
   }
 
-  // Cascade cleanup before deleting the user
-  // 1. Close any active streams
-  await prismaClient.stream.updateMany({
-    where: { userId: targetUserId, isLive: true },
-    data: { isLive: false, endedAt: new Date() },
-  });
-
-  // 2. Delete CurrentStream entry
-  await prismaClient.currentStream.deleteMany({
-    where: { userId: targetUserId },
-  });
-
-  // 3. Delete the user (Prisma cascade handles related records via schema onDelete)
-  await prismaClient.user.delete({
-    where: { id: targetUserId },
+  // Mirrors the cascade in /api/user/delete — done in one transaction so a
+  // failure partway through (e.g. an unexpected FK constraint) rolls back
+  // instead of leaving the target user half-deleted.
+  await prismaClient.$transaction(async (tx) => {
+    await tx.stream.updateMany({
+      where: { userId: targetUserId, isLive: true },
+      data: { isLive: false, endedAt: new Date() },
+    });
+    await tx.currentStream.deleteMany({ where: { userId: targetUserId } });
+    await tx.session.deleteMany({ where: { userId: targetUserId } });
+    await tx.account.deleteMany({ where: { userId: targetUserId } });
+    await tx.upvote.deleteMany({ where: { userId: targetUserId } });
+    await tx.favorite.deleteMany({
+      where: { OR: [{ userId: targetUserId }, { favoriteId: targetUserId }] },
+    });
+    await tx.friendship.deleteMany({
+      where: { OR: [{ requesterId: targetUserId }, { addresseeId: targetUserId }] },
+    });
+    await tx.streamAccess.deleteMany({
+      where: { OR: [{ streamerId: targetUserId }, { viewerId: targetUserId }] },
+    });
+    await tx.sessionMember.deleteMany({
+      where: { OR: [{ userId: targetUserId }, { creatorId: targetUserId }] },
+    });
+    await tx.listeningActivity.deleteMany({
+      where: { OR: [{ userId: targetUserId }, { creatorId: targetUserId }] },
+    });
+    await tx.streamEvent.deleteMany({ where: { creatorId: targetUserId } });
+    await tx.stream.deleteMany({
+      where: { OR: [{ userId: targetUserId }, { addedById: targetUserId }] },
+    });
+    await tx.user.delete({ where: { id: targetUserId } });
   });
 
   return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)

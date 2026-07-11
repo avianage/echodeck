@@ -27,6 +27,17 @@ const CreateStreamSchema = z.object({
 });
 
 const MAX_QUEUE_LENGTH = parseInt(process.env.MAX_QUEUE_LENGTH || '200', 10);
+const EXTERNAL_API_TIMEOUT_MS = parseInt(process.env.EXTERNAL_API_TIMEOUT_MS || '10000', 10);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withTimeout(promise: Promise<any>, ms: number): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,20 +83,35 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Check the blocklist before spending an external API call on a video
+      // we're going to reject anyway.
+      const blockedEarly = await prismaClient.blockedVideo.findUnique({
+        where: { videoId: extractedId },
+      });
+      if (blockedEarly) {
+        return NextResponse.json(
+          {
+            message: 'This video is not supported or has been blacklisted due to embed restrictions.',
+          },
+          { status: 400 },
+        );
+      }
+
       logger.info(`🎥 Fetching details for video: ${extractedId}`);
       try {
         let res: YouTubeVideoDetails;
         try {
-          res = await youtubesearchapi.GetVideoDetails(extractedId);
+          res = await withTimeout(youtubesearchapi.GetVideoDetails(extractedId), EXTERNAL_API_TIMEOUT_MS);
         } catch (libErr) {
           logger.warn(
             { err: libErr },
             `⚠️ GetVideoDetails threw an error for ${extractedId}. Trying search fallback...`,
           );
           // Search by ID often returns the same video with a different metadata format
-          const searchFallback = await youtubesearchapi.GetListByKeyword(extractedId, false, 1, [
-            { type: 'video' },
-          ]);
+          const searchFallback = await withTimeout(
+            youtubesearchapi.GetListByKeyword(extractedId, false, 1, [{ type: 'video' }]),
+            EXTERNAL_API_TIMEOUT_MS,
+          );
           res = searchFallback?.items?.[0];
           if (res) {
             // Normalize search result to look like VideoDetails enough for the logic below
@@ -128,8 +154,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const session = await getServerSession(authOptions);
-      const userId = session?.user?.id;
+      const userId = session.user?.id;
 
       logger.info(`🎧 Fetching details for Spotify track: ${spotifyId}`);
 
@@ -151,7 +176,7 @@ export async function POST(req: NextRequest) {
         logger.info('📡 Trying Linked Spotify Token for track fetch');
         const userApi = getUserSpotifyApi(token);
         if (userApi) {
-          const res = await userApi.getTrack(spotifyId);
+          const res = await withTimeout(userApi.getTrack(spotifyId), EXTERNAL_API_TIMEOUT_MS);
           track = res.body as unknown as SpotifyTrack;
 
           logger.info('✅ Track fetched via Linked Token');
@@ -166,7 +191,7 @@ export async function POST(req: NextRequest) {
           logger.info('📡 Trying Client Credentials for track fetch');
           const appApi = await getSpotifyApi();
           if (appApi) {
-            const res = await appApi.getTrack(spotifyId);
+            const res = await withTimeout(appApi.getTrack(spotifyId), EXTERNAL_API_TIMEOUT_MS);
             track = res.body as unknown as SpotifyTrack;
 
             logger.info('✅ Track fetched via Client Credentials');
@@ -183,7 +208,7 @@ export async function POST(req: NextRequest) {
         try {
           logger.info('📡 Falling back to SCRAPE for track fetch');
           const trackUrl = `https://open.spotify.com/track/${spotifyId}`;
-          const scrapedTracks = await getTracks(trackUrl);
+          const scrapedTracks = await withTimeout(getTracks(trackUrl), EXTERNAL_API_TIMEOUT_MS);
           if (scrapedTracks && scrapedTracks.length > 0) {
             const t = scrapedTracks[0];
             track = {
@@ -222,11 +247,11 @@ export async function POST(req: NextRequest) {
           smallImg = '';
         }
 
-        const res = await youtubesearchapi.GetListByKeyword(
-          `${track.name} ${artistNames}`,
-          false,
-          1,
-          [{ type: 'video' }],
+        const res = await withTimeout(
+          youtubesearchapi.GetListByKeyword(`${track.name} ${artistNames}`, false, 1, [
+            { type: 'video' },
+          ]),
+          EXTERNAL_API_TIMEOUT_MS,
         );
         const bestMatch = res?.items?.[0];
         if (!bestMatch) {
@@ -240,10 +265,6 @@ export async function POST(req: NextRequest) {
         logger.error({ err: e }, `❌ Spotify API or YT fallback failed:`);
         return NextResponse.json({ message: 'Failed to process Spotify track.' }, { status: 400 });
       }
-    }
-
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 403 });
     }
 
     const user = await prismaClient.user.findUnique({
@@ -289,11 +310,21 @@ export async function POST(req: NextRequest) {
 
     const creator = await prismaClient.user.findUnique({
       where: { id: data.creatorId },
-      select: { isPublic: true },
+      select: { isPublic: true, currentStream: { select: { mode: true } } },
     });
 
     if (!creator) {
       return NextResponse.json({ message: 'Creator not found' }, { status: 404 });
+    }
+
+    // A jam room can have several people adding tracks at once, each with
+    // their own per-user budget above — without this, the room's aggregate
+    // add-rate scales with the number of contributors instead of being capped.
+    if (creator.currentStream?.mode === 'JAM') {
+      const jamRoomLimit = parseInt(process.env.RATE_LIMIT_JAM_ROOM || '40', 10);
+      if (isRateLimited(`add-room:${data.creatorId}`, jamRoomLimit, 60 * 1000)) {
+        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+      }
     }
 
     // Check if video is blacklisted
@@ -328,10 +359,11 @@ export async function POST(req: NextRequest) {
     const existingActiveStream = await prismaClient.stream.count({
       where: {
         userId: data.creatorId,
+        played: false,
       },
     });
 
-    if (existingActiveStream > MAX_QUEUE_LENGTH) {
+    if (existingActiveStream >= MAX_QUEUE_LENGTH) {
       return NextResponse.json(
         {
           message: 'Stream Queue At limit',
@@ -430,10 +462,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: 'Creator not found' }, { status: 404 });
     }
 
-    if (!creator) {
-      return NextResponse.json({ message: 'Creator not found' }, { status: 404 });
-    }
-
     // Use Stream Roles to check access
     const streamRole = await getStreamRole(user.id, creatorId);
 
@@ -445,6 +473,10 @@ export async function GET(req: NextRequest) {
       const canBypass = ['CREATOR', 'MODERATOR', 'OWNER'].includes(streamRole);
       if (!creator.isPublic && !canBypass) {
         const resetAccess = req.nextUrl.searchParams.get('resetAccess') === 'true';
+
+        if (resetAccess && isRateLimited(`reset-access:${user.id}:${creator.id}`, 3, 60 * 1000)) {
+          return NextResponse.json({ message: 'Too many requests' }, { status: 429 });
+        }
 
         if (resetAccess) {
           logger.info(`🔄 Resetting access for user ${user.id} on creator ${creator.id}`);

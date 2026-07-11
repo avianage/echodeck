@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,22 @@ export function QueueSection({
   onVote,
   onRemove,
 }: QueueSectionProps) {
+  const [votingIds, setVotingIds] = useState<Set<string>>(new Set());
+
+  const handleVoteClick = async (id: string, isUpvote: boolean) => {
+    if (votingIds.has(id)) return;
+    setVotingIds((prev) => new Set(prev).add(id));
+    try {
+      await onVote(id, isUpvote);
+    } finally {
+      setVotingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -50,9 +67,9 @@ export function QueueSection({
         </Card>
       ) : (
         <div className="space-y-3 max-h-[300px] sm:max-h-[400px] lg:max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-          {queue.map((video, index) => (
+          {queue.map((video) => (
             <Card
-              key={`${video.id}-${index}`}
+              key={video.id}
               className="bg-white/5 border-white/5 hover:bg-white/10 transition-colors"
             >
               <CardContent className="p-3 flex items-center gap-4">
@@ -86,7 +103,8 @@ export function QueueSection({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onVote(video.id, !video.haveUpvoted)}
+                    disabled={votingIds.has(video.id)}
+                    onClick={() => handleVoteClick(video.id, !video.haveUpvoted)}
                     className={`h-8 px-2 ${video.haveUpvoted ? 'text-blue-500' : 'text-gray-400'}`}
                   >
                     {video.haveUpvoted ? (

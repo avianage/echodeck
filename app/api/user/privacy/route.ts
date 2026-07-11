@@ -12,6 +12,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const { allowFriendRequests, isPublic } = await req.json();
+
+    if (allowFriendRequests !== undefined && typeof allowFriendRequests !== 'boolean') {
+      return NextResponse.json({ message: 'allowFriendRequests must be a boolean' }, { status: 400 });
+    }
+    if (isPublic !== undefined && typeof isPublic !== 'boolean') {
+      return NextResponse.json({ message: 'isPublic must be a boolean' }, { status: 400 });
+    }
+
     const updateData: Record<string, unknown> = {};
     if (allowFriendRequests !== undefined) updateData.allowFriendRequests = allowFriendRequests;
     if (isPublic !== undefined) updateData.isPublic = isPublic;

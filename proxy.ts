@@ -112,7 +112,12 @@ export async function proxy(req: NextRequest) {
     return applyCors(NextResponse.redirect(purifyUrl(setupUrl.toString())));
   }
 
-  if (token && pathname.startsWith('/stream')) {
+  if (pathname.startsWith('/stream')) {
+    if (!token) {
+      const signInUrl = new URL('/auth/signin', req.url);
+      signInUrl.searchParams.set('callbackUrl', purifyUrl(req.url));
+      return applyCors(NextResponse.redirect(purifyUrl(signInUrl.toString())));
+    }
     const role = (token as Record<string, unknown>).platformRole;
     if (role !== 'CREATOR' && role !== 'OWNER') {
       return applyCors(NextResponse.redirect(new URL('/dashboard', req.url)));

@@ -23,25 +23,30 @@ export function FriendActivityFeed() {
   const [loading, setLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const fetchActivity = async () => {
-    try {
-      const res = await fetch('/api/friends/activity');
-      if (res.ok) {
-        const data = await res.json();
-        setActivity(data.activity);
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to fetch friend activity', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchActivity = async () => {
+      try {
+        const res = await fetch('/api/friends/activity');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setActivity(data.activity);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to fetch friend activity', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchActivity();
     const interval = setInterval(fetchActivity, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading && activity.length === 0) return null;

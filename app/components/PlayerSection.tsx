@@ -34,6 +34,8 @@ interface PlayerSectionProps {
   creatorId: string;
   currentUserId: string | null;
   accessStatus: string | null;
+  /** True for the creator, or a jam member with playback rights — gets native embed controls. */
+  canControlPlayback?: boolean;
   volume: number;
   playerRef: React.RefObject<YTPlayer | null>;
   onReady: (player: YTPlayer) => void;
@@ -61,6 +63,7 @@ export function PlayerSection({
   creatorId,
   currentUserId,
   accessStatus: _accessStatus,
+  canControlPlayback,
   volume,
   playerRef,
   onReady,
@@ -129,7 +132,7 @@ export function PlayerSection({
       <div className="relative w-full aspect-video md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
         <YouTubePlayer
           videoId={currentVideo.extractedId}
-          isHost={currentUserId === creatorId}
+          isHost={currentUserId === creatorId || !!canControlPlayback}
           playing={playing}
           volume={volume}
           muted={isMuted}
@@ -207,6 +210,7 @@ export function PlayerSection({
               <Button
                 onClick={onMuteToggle}
                 size="sm"
+                aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}
                 className="bg-transparent hover:bg-white/5 text-white h-7 w-7 p-0"
               >
                 {isMuted || volume === 0 ? (
@@ -222,6 +226,7 @@ export function PlayerSection({
                 step="0.01"
                 value={isMuted ? 0 : volume}
                 onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                aria-label="Volume"
                 className="w-0 group-hover/vol:w-20 transition-all cursor-pointer accent-blue-500 h-1 bg-white/20 rounded-lg appearance-none overflow-hidden"
               />
             </div>

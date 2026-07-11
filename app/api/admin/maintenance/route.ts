@@ -54,14 +54,21 @@ export async function GET() {
 // POST — owner only, enable/disable maintenance
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  const role = (session?.user as SessionUser)?.platformRole;
   const userId = (session?.user as SessionUser)?.id;
 
-  if (role !== 'OWNER') {
+  if (!userId) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
   }
 
-  if (!userId) {
+  // Re-check role against the DB rather than trusting the JWT claim, so a
+  // demoted OWNER loses maintenance access immediately instead of retaining
+  // it until their session token naturally expires/refreshes.
+  const dbUser = await prismaClient.user.findUnique({
+    where: { id: userId },
+    select: { platformRole: true },
+  });
+
+  if (dbUser?.platformRole !== 'OWNER') {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
   }
 

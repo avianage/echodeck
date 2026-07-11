@@ -12,7 +12,8 @@ import { logger } from '@/lib/logger';
 const SyncSchema = z.object({
   creatorId: z.string(),
   type: z.enum(['play', 'pause']),
-  currentTime: z.number(),
+  currentTime: z.number().min(0).finite(),
+  clientTimestamp: z.number().finite().optional(),
 });
 
 interface SessionUser {
@@ -21,6 +22,11 @@ interface SessionUser {
   email?: string | null;
   image?: string | null;
 }
+
+// Guards against a delayed/out-of-order sync request overwriting a newer one
+// (e.g. a queued "pause" arriving after a later "play" due to network jitter).
+// Keyed per creator since only one sync stream is authoritative at a time.
+const lastAcceptedSyncTimestamp = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,11 +43,26 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const data = SyncSchema.parse(body);
 
-    const role = await getStreamRole(userId as string, data.creatorId);
+    const [role, currentStream] = await Promise.all([
+      getStreamRole(userId as string, data.creatorId),
+      prismaClient.currentStream.findUnique({
+        where: { userId: data.creatorId },
+        select: { mode: true },
+      }),
+    ]);
+    const mode = (currentStream?.mode as 'BROADCAST' | 'JAM' | undefined) ?? 'BROADCAST';
     const permissionRequired = data.type === 'play' ? 'playback:play' : 'playback:pause';
 
-    if (!hasPermission(role, permissionRequired)) {
+    if (!hasPermission(role, permissionRequired, mode)) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
+    }
+
+    if (data.clientTimestamp !== undefined) {
+      const lastAccepted = lastAcceptedSyncTimestamp.get(data.creatorId);
+      if (lastAccepted !== undefined && data.clientTimestamp < lastAccepted) {
+        return NextResponse.json({ message: 'Stale sync ignored' }, { status: 409 });
+      }
+      lastAcceptedSyncTimestamp.set(data.creatorId, data.clientTimestamp);
     }
 
     // Update the CurrentStream record as the source of truth for sync

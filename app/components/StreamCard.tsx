@@ -1,5 +1,6 @@
 import { Lock, Users, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Image from 'next/image';
 
 export interface StreamData {
   id: string;
@@ -32,11 +33,12 @@ export function StreamCard({ stream, isGuest, onJoinClick }: StreamCardProps) {
     <div className="group relative bg-[#111] border border-white/5 rounded-[2rem] overflow-hidden transition-all hover:bg-[#151515] hover:border-white/10 hover:shadow-2xl hover:shadow-blue-900/10">
       {/* Top Area: Player Preview / Lock */}
       <div className="relative w-full aspect-video rounded-t-[2rem] overflow-hidden bg-[#0a0a0a]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={thumbnail}
-          alt={stream.title}
-          className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${isGuest ? 'blur-md scale-110 opacity-50' : 'opacity-80'}`}
+          alt={stream.title || 'Stream thumbnail'}
+          fill
+          sizes="(max-width: 768px) 100vw, 400px"
+          className={`object-cover transition-transform duration-700 group-hover:scale-110 ${isGuest ? 'blur-md scale-110 opacity-50' : 'opacity-80'}`}
         />
 
         {isGuest && (
@@ -79,7 +81,7 @@ export function StreamCard({ stream, isGuest, onJoinClick }: StreamCardProps) {
                   <img
                     src={stream.user.image}
                     className="w-full h-full object-cover"
-                    alt={stream.user.username}
+                    alt={stream.user.username || 'User avatar'}
                   />
                 ) : (
                   <Users className="w-6 h-6 text-gray-500" />

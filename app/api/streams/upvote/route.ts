@@ -7,6 +7,7 @@ import { authOptions } from '@/app/lib/auth';
 import { getStreamRole } from '@/app/lib/getSessionRole';
 import { hasPermission } from '@/app/lib/permissions';
 import { isRateLimited } from '@/app/lib/rateLimit';
+import { isUniqueConstraintError } from '@/app/lib/prismaErrors';
 import { logger } from '@/lib/logger';
 
 const UpvoteSchema = z.object({
@@ -59,6 +60,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Invalid stream ID' }, { status: 404 });
     }
 
+    if (stream.played) {
+      return NextResponse.json({ message: 'This track has already played' }, { status: 400 });
+    }
+
     const role = await getStreamRole(user.id, stream.userId);
     if (!hasPermission(role, 'vote:cast')) {
       return NextResponse.json({ message: 'Action restricted from this stream' }, { status: 403 });
@@ -97,13 +102,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Already upvoted' }, { status: 409 });
     }
 
-    // ✅ Create upvote
-    await prismaClient.upvote.create({
-      data: {
-        userId: user.id,
-        streamId: data.streamId,
-      },
-    });
+    // ✅ Create upvote. The `@@unique([userId, streamId])` constraint is the
+    // real guard against a duplicate-vote race (two near-simultaneous
+    // requests both passing the `existingUpvote` check above); catch that
+    // race here and report it the same way as the pre-check does, instead of
+    // letting it fall through to a raw 500.
+    try {
+      await prismaClient.upvote.create({
+        data: {
+          userId: user.id,
+          streamId: data.streamId,
+        },
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        return NextResponse.json({ message: 'Already upvoted' }, { status: 409 });
+      }
+      throw err;
+    }
 
     return NextResponse.json(
       { message: 'Upvoted successfully!' },
@@ -114,7 +130,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        message: 'Error while Upvoting: ' + error,
+        message: 'Error while upvoting',
       },
       {
         status: 500,

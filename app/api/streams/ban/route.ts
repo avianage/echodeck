@@ -29,18 +29,39 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { targetUserId, creatorId, type, duration, reason } = StreamBanSchema.parse(body);
 
+    if (targetUserId === callerId) {
+      return NextResponse.json({ message: 'Cannot restrict yourself' }, { status: 400 });
+    }
+
     const role = await getStreamRole(callerId, creatorId);
-    if (!hasPermission(role, 'session:ban:stream')) {
+    const requiredPermission = type === 'timeout' ? 'session:timeout:stream' : 'session:ban:stream';
+    if (!hasPermission(role, requiredPermission)) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
     }
 
+    if (targetUserId === creatorId) {
+      return NextResponse.json({ message: 'Cannot restrict the stream owner' }, { status: 400 });
+    }
+
+    const targetRole = await getStreamRole(targetUserId, creatorId);
+    if (role !== 'OWNER' && (targetRole === 'MODERATOR' || targetRole === 'OWNER')) {
+      return NextResponse.json(
+        { message: 'Cannot restrict a fellow moderator or the owner' },
+        { status: 403 },
+      );
+    }
+
     if (type === 'unban') {
-      await prismaClient.sessionMember.update({
+      await prismaClient.sessionMember.upsert({
         where: { userId_creatorId: { userId: targetUserId, creatorId } },
-        data: {
+        update: {
           isBanned: false,
           bannedUntil: null,
           banReason: null,
+        },
+        create: {
+          userId: targetUserId,
+          creatorId,
         },
       });
       return NextResponse.json({ message: 'Restriction lifted' });

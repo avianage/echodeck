@@ -22,7 +22,8 @@ export function BottomNav() {
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gray-950/95 backdrop-blur-sm border-t border-gray-800 pb-safe">
       <div className="flex items-center justify-around py-2">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive =
+            item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
           const Icon = item.icon;
 
           return (

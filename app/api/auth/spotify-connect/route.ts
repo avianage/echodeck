@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
+import { createOAuthState } from '@/app/lib/oauthState';
 
 interface SessionUser {
   id?: string;
@@ -30,7 +31,7 @@ export async function GET(_req: NextRequest) {
     response_type: 'code',
     redirect_uri: `${process.env.NEXTAUTH_URL}/api/auth/spotify-callback`,
     scope: scopes,
-    state: userId as string, // pass userId through state param
+    state: createOAuthState(userId as string),
   });
 
   return NextResponse.redirect(`https://accounts.spotify.com/authorize?${params.toString()}`);

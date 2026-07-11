@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
+import { isRecentlyActive } from '@/app/lib/presence';
 
 export async function GET(_req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -28,24 +29,19 @@ export async function GET(_req: NextRequest) {
     },
   });
 
-  const favoritesWithStatus = await Promise.all(
-    (user?.favorites ?? []).map(async (f) => {
-      const activeStream = await prismaClient.currentStream.findUnique({
-        where: {
-          userId: f.favoriteId,
-        },
-      });
+  const favorites = user?.favorites ?? [];
+  const currentStreams = favorites.length
+    ? await prismaClient.currentStream.findMany({
+        where: { userId: { in: favorites.map((f) => f.favoriteId) } },
+        select: { userId: true, updatedAt: true },
+      })
+    : [];
+  const updatedAtByUserId = new Map(currentStreams.map((cs) => [cs.userId, cs.updatedAt]));
 
-      // Consider online if heartbeat was within the last 30 seconds
-      const isOnline =
-        activeStream && new Date().getTime() - new Date(activeStream.updatedAt).getTime() < 30000;
-
-      return {
-        ...f.favorite,
-        isOnline: !!isOnline,
-      };
-    }),
-  );
+  const favoritesWithStatus = favorites.map((f) => ({
+    ...f.favorite,
+    isOnline: isRecentlyActive(updatedAtByUserId.get(f.favoriteId)),
+  }));
 
   return NextResponse.json({
     favorites: favoritesWithStatus,

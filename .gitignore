@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/bot/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -45,3 +46,11 @@ next-env.d.ts
 !prisma/migrations/**/*.sql
 backup_*.sql
 docker-compose.yml
+
+# Lint/build output artifacts (should never be committed)
+build.log
+eslint-*.txt
+eslint-*.json
+lint-*.txt
+ts_error*.txt
+warnings.txt

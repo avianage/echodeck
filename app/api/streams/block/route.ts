@@ -11,6 +11,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
     }
 
+    const userId = session.user.id as string;
+    const user = await prismaClient.user.findUnique({
+      where: { id: userId },
+      select: { platformRole: true },
+    });
+
+    if (user?.platformRole !== 'OWNER') {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
+    }
+
     const { videoId } = await req.json();
     if (!videoId) {
       return NextResponse.json({ message: 'Video ID required' }, { status: 400 });

@@ -6,6 +6,7 @@ import { authOptions } from '@/app/lib/auth';
 import { getStreamRole } from '@/app/lib/getSessionRole';
 import { hasPermission } from '@/app/lib/permissions';
 import { isRateLimited } from '@/app/lib/rateLimit';
+import { isRecordNotFoundError } from '@/app/lib/prismaErrors';
 import { logger } from '@/lib/logger';
 
 const DownvoteSchema = z.object({
@@ -58,6 +59,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Invalid stream ID' }, { status: 404 });
     }
 
+    if (stream.played) {
+      return NextResponse.json({ message: 'This track has already played' }, { status: 400 });
+    }
+
     const role = await getStreamRole(user.id, stream.userId);
     if (!hasPermission(role, 'vote:cast')) {
       return NextResponse.json({ message: 'Action restricted from this stream' }, { status: 403 });
@@ -96,15 +101,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "You haven't upvoted this stream yet" }, { status: 409 });
     }
 
-    // 🗑️ Remove upvote
-    await prismaClient.upvote.delete({
-      where: {
-        userId_streamId: {
-          userId: user.id,
-          streamId: data.streamId,
+    // 🗑️ Remove upvote. A concurrent downvote request racing this one could
+    // have already deleted the row between the check above and this delete;
+    // treat that as a successful no-op rather than a raw 500.
+    try {
+      await prismaClient.upvote.delete({
+        where: {
+          userId_streamId: {
+            userId: user.id,
+            streamId: data.streamId,
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      if (!isRecordNotFoundError(err)) throw err;
+    }
 
     return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
   } catch (error: unknown) {
@@ -112,8 +123,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        message:
-          'Error while Downvoting: ' + (error instanceof Error ? error.message : String(error)),
+        message: 'Error while downvoting',
       },
       {
         status: 500,

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "CurrentStream" ADD COLUMN     "mode" TEXT NOT NULL DEFAULT 'BROADCAST';

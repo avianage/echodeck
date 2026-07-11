@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
 import type { Friendship, ListeningActivity } from '@prisma/client';
+import { isRecentlyActive } from '@/app/lib/presence';
 
 type FriendshipWithMembers = Friendship & {
   requester: {
@@ -53,37 +54,43 @@ export async function GET(_req: NextRequest) {
     },
   });
 
-  const ACTIVITY_TIMEOUT_MS = 30 * 1000; // 30s — if no heartbeat, consider offline
-  const now = Date.now();
-
-  const activity = await Promise.all(
-    friendships.map(async (f: FriendshipWithMembers) => {
-      const friend = f.requesterId === userId ? f.addressee : f.requester;
-      const la = friend.listeningActivity;
-      const isActive = la && now - new Date(la.updatedAt).getTime() < ACTIVITY_TIMEOUT_MS;
-
-      let partyCode = null;
-      if (isActive && la.creatorId) {
-        const creator = await prismaClient.user.findUnique({
-          where: { id: la.creatorId },
-          select: { partyCode: true },
-        });
-        partyCode = creator?.partyCode;
-      }
-
-      return {
-        id: friend.id,
-        username: friend.username,
-        displayName: friend.displayName,
-        image: friend.image,
-        isListening: isActive,
-        creatorId: isActive ? la.creatorId : null,
-        partyCode: partyCode,
-        songTitle: isActive ? la.songTitle : null,
-        lastSeen: la?.updatedAt ?? null,
-      };
-    }),
+  const friends = friendships.map((f: FriendshipWithMembers) =>
+    f.requesterId === userId ? f.addressee : f.requester,
   );
+
+  const activeCreatorIds = Array.from(
+    new Set(
+      friends
+        .filter((friend) => isRecentlyActive(friend.listeningActivity?.updatedAt))
+        .map((friend) => friend.listeningActivity?.creatorId)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
+  const creators = activeCreatorIds.length
+    ? await prismaClient.user.findMany({
+        where: { id: { in: activeCreatorIds } },
+        select: { id: true, partyCode: true },
+      })
+    : [];
+  const partyCodeByCreatorId = new Map(creators.map((c) => [c.id, c.partyCode]));
+
+  const activity = friends.map((friend) => {
+    const la = friend.listeningActivity;
+    const isActive = !!la && isRecentlyActive(la.updatedAt);
+
+    return {
+      id: friend.id,
+      username: friend.username,
+      displayName: friend.displayName,
+      image: friend.image,
+      isListening: isActive,
+      creatorId: isActive ? la.creatorId : null,
+      partyCode: isActive && la.creatorId ? (partyCodeByCreatorId.get(la.creatorId) ?? null) : null,
+      songTitle: isActive ? la.songTitle : null,
+      lastSeen: la?.updatedAt ?? null,
+    };
+  });
 
   return NextResponse.json({ activity });
 }

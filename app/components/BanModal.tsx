@@ -3,19 +3,23 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Ban, Clock, ShieldAlert, X } from 'lucide-react';
+import { useModalA11y } from '@/app/lib/useModalA11y';
 
 interface BanModalProps {
   isOpen: boolean;
   targetUsername: string;
   scope: 'platform' | 'stream';
   onClose: () => void;
-  onConfirm: (type: 'ban' | 'timeout', duration: string, reason: string) => void;
+  onConfirm: (type: 'ban' | 'timeout', duration: string, reason: string) => void | Promise<void>;
 }
 
 export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: BanModalProps) {
   const [type, setType] = useState<'ban' | 'timeout'>('timeout');
   const [duration, setDuration] = useState('1hr');
   const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const containerRef = useModalA11y(isOpen, onClose);
 
   // Reset state on open
 
@@ -27,18 +31,28 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
       setDuration('1hr');
 
       setReason('');
+      setSubmitting(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleConfirm = () => {
-    onConfirm(type, type === 'ban' ? 'permanent' : duration, reason);
+  const handleConfirm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm(type, type === 'ban' ? 'permanent' : duration, reason);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-[#0a0a0a]/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative bg-[#111] border border-white/10 text-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+      <div
+        ref={containerRef}
+        className="relative bg-[#111] border border-white/10 text-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+      >
         <div
           className={`absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r ${type === 'ban' ? 'from-red-600 to-red-400' : 'from-amber-600 to-amber-400'}`}
         />
@@ -169,19 +183,21 @@ export function BanModal({ isOpen, targetUsername, scope, onClose, onConfirm }: 
           <Button
             variant="ghost"
             onClick={onClose}
+            disabled={submitting}
             className="flex-1 rounded-2xl text-gray-500 hover:bg-white/5 h-12 font-bold"
           >
             Cancel
           </Button>
           <Button
             onClick={handleConfirm}
+            disabled={submitting}
             className={`flex-1 rounded-2xl font-bold h-12 transition-all shadow-lg ${
               type === 'ban'
                 ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
                 : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/20'
             }`}
           >
-            Apply {type.charAt(0).toUpperCase() + type.slice(1)}
+            {submitting ? 'Applying...' : `Apply ${type.charAt(0).toUpperCase() + type.slice(1)}`}
           </Button>
         </div>
       </div>

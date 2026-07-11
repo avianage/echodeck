@@ -19,23 +19,30 @@ export function FriendRequests() {
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchRequests = async () => {
-    try {
-      const res = await fetch('/api/friends/requests');
-      if (res.ok) {
-        const data = await res.json();
-        setRequests(data.requests);
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to fetch requests', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchRequests = async () => {
+      try {
+        const res = await fetch('/api/friends/requests');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setRequests(data.requests);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to fetch requests', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchRequests();
+    const interval = setInterval(fetchRequests, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleRespond = async (friendshipId: string, action: 'accept' | 'block') => {

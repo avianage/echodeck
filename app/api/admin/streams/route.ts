@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id as string;
   if (!userId) return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
@@ -17,12 +17,30 @@ export async function GET(_req: NextRequest) {
   if (user?.platformRole !== 'OWNER')
     return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
 
-  const streams = await prismaClient.stream.findMany({
-    include: {
-      user: { select: { username: true, displayName: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const page = Number(req.nextUrl.searchParams.get('page') ?? 1);
+  const isLiveParam = req.nextUrl.searchParams.get('isLive');
+  const pageSize = 50;
 
-  return NextResponse.json({ streams });
+  const where = isLiveParam !== null ? { isLive: isLiveParam === 'true' } : {};
+
+  const [streams, totalCount] = await Promise.all([
+    prismaClient.stream.findMany({
+      where,
+      include: {
+        user: { select: { username: true, displayName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prismaClient.stream.count({ where }),
+  ]);
+
+  return NextResponse.json({
+    streams,
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.ceil(totalCount / pageSize),
+  });
 }

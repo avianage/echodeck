@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
-import { z } from 'zod';
-
-const UpdateUsernameSchema = z.object({
-  username: z
-    .string()
-    .min(3, 'Username must be at least 3 characters')
-    .max(20, 'Username must be at most 20 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores allowed'),
-});
+import { isUniqueConstraintError } from '@/app/lib/prismaErrors';
+import { usernameError } from '@/app/lib/username';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -25,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (user.usernameUpdatedAt) {
     const daysSince = (Date.now() - user.usernameUpdatedAt.getTime()) / (1000 * 60 * 60 * 24);
     if (daysSince < cooldownDays) {
-      const daysLeft = Math.ceil(30 - daysSince);
+      const daysLeft = Math.ceil(cooldownDays - daysSince);
       return NextResponse.json(
         {
           message: `Username can be updated in ${daysLeft} more day(s)`,
@@ -36,20 +29,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { username } = UpdateUsernameSchema.parse(body);
+  const { username } = body ?? {};
 
-  // Keep existing regex check for backward compatibility
-  const valid = /^[a-z0-9_]{5,}$/.test(username);
-  if (!valid) {
-    return NextResponse.json(
-      {
-        message:
-          username.length < 5
-            ? 'Must be at least 5 characters'
-            : 'Only lowercase letters, numbers, and underscores allowed',
-      },
-      { status: 400 },
-    );
+  const validationError = usernameError(username);
+  if (validationError) {
+    return NextResponse.json({ message: validationError }, { status: 400 });
   }
 
   const existing = await prismaClient.user.findUnique({ where: { username } });
@@ -57,10 +41,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Username already taken' }, { status: 409 });
   }
 
-  await prismaClient.user.update({
-    where: { id: userId },
-    data: { username, usernameUpdatedAt: new Date() },
-  });
+  try {
+    await prismaClient.user.update({
+      where: { id: userId },
+      data: { username, usernameUpdatedAt: new Date() },
+    });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return NextResponse.json({ message: 'Username already taken' }, { status: 409 });
+    }
+    throw err;
+  }
 
   return NextResponse.json({ message: 'Username updated successfully' });
 }

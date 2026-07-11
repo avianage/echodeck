@@ -39,6 +39,11 @@ import { QueueSection } from './QueueSection';
 import { ActivityLog } from './ActivityLog';
 import { PlaylistModal } from './PlaylistModal';
 import { StreamManagement } from './StreamManagement';
+import { ChatPanel } from './ChatPanel';
+import { RecentlyPlayedPanel } from './RecentlyPlayedPanel';
+import { CreatorStatsPanel } from './CreatorStatsPanel';
+import { SavedPlaylistsPanel } from './SavedPlaylistsPanel';
+import { InviteFriendsModal } from './InviteFriendsModal';
 
 function Countdown({ until }: { until: string }) {
   const [timeLeft, setTimeLeft] = useState('');
@@ -163,6 +168,8 @@ export default function StreamView({
   const [viewerCount, setViewerCount] = useState(0);
   const [streamTitle, setStreamTitle] = useState('');
   const [streamGenre, setStreamGenre] = useState('');
+  const [sessionMode, setSessionMode] = useState<'BROADCAST' | 'JAM'>('BROADCAST');
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
    const [showSpotifyPrompt, setShowSpotifyPrompt] = useState(false);
    const lastRefreshRef = useRef<number>(0);
@@ -202,6 +209,13 @@ export default function StreamView({
   const lastSyncPushRef = useRef<number>(0);
   // true while an SSE connection is healthy — disables the fallback poll
   const sseActiveRef = useRef(false);
+  // Mirrors currentVideo.id without needing currentVideo in refreshStreams'
+  // deps — adding it there would recreate the heartbeat interval (which
+  // depends on refreshStreams) on every song change.
+  const currentVideoIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentVideoIdRef.current = currentVideo?.id ?? null;
+  }, [currentVideo]);
 
   const refreshStreams = useCallback(
     async (isInitial: boolean = false) => {
@@ -238,24 +252,22 @@ export default function StreamView({
         setAccessStatus(json.accessStatus);
         setStreamRole(json.streamRole || 'MEMBER');
         setRestriction(json.restriction);
+        setSessionMode(json.activeStream?.mode === 'JAM' ? 'JAM' : 'BROADCAST');
 
-        if (!json.activeStream?.stream && json.creator?.isPublic !== undefined) {
+        if (!json.activeStream?.stream) {
+          if (json.creator?.isPublic !== undefined) {
+            setStreamIsPublic(json.creator.isPublic);
+          }
+          setCurrentVideo(null);
+        } else {
           setStreamIsPublic(json.creator.isPublic);
+          setViewerCount(json.activeStream.viewerCount);
+          if (currentVideoIdRef.current !== json.activeStream.stream.id) {
+            setStreamTitle(json.activeStream.title || '');
+            setStreamGenre(json.activeStream.genre || '');
+          }
+          setCurrentVideo(json.activeStream.stream);
         }
-
-         setCurrentVideo((video) => {
-           if (!json.activeStream?.stream) {
-             return null;
-           }
-           setStreamIsPublic(json.creator.isPublic);
-           setViewerCount(json.activeStream.viewerCount);
-           if (video?.id === json.activeStream.stream.id) {
-             return video;
-           }
-           setStreamTitle(json.activeStream.title || '');
-           setStreamGenre(json.activeStream.genre || '');
-           return json.activeStream.stream;
-         });
 
         // Non-blocking: check if creator is already favorited
         fetch('/api/user/favorites')
@@ -388,16 +400,6 @@ export default function StreamView({
       }
     };
   }, [pathname]);
-
-  useEffect(() => {
-    const handleEnter = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        handleSubmit(e as any);
-      }
-    };
-    window.addEventListener('keydown', handleEnter);
-    return () => window.removeEventListener('keydown', handleEnter);
-  }, [handleSubmit]);
 
   const isFirstLoad = useRef(true);
   useEffect(() => {
@@ -609,6 +611,30 @@ export default function StreamView({
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          if (data.type === 'stream_ended') {
+            toast.error('The streamer has ended this session.', {
+              toastId: 'stream-ended',
+              autoClose: false,
+            });
+            setTimeout(() => window.location.reload(), 2000);
+            return;
+          }
+          if (data.type === 'queue_cleared') {
+            toast.info('The queue was cleared.', { toastId: 'queue-cleared' });
+            refreshStreams();
+            return;
+          }
+          if (data.type === 'playlist_loaded') {
+            toast.info(`Playlist "${data.name}" loaded.`, { toastId: 'playlist-loaded' });
+            refreshStreams();
+            return;
+          }
+          if (data.type === 'chat' || data.type === 'chat_deleted') {
+            // Handled by ChatPanel's own SSE connection; ignore here.
+            return;
+          }
+
           if (!playerRef.current) return;
 
           const myTime = playerRef.current.getCurrentTime?.() ?? 0;
@@ -952,7 +978,10 @@ export default function StreamView({
   const playNext = async () => {
     try {
       setPlayNextLoader(true);
-      const response = await fetch('/api/streams/next', { method: 'GET' });
+      const response = await fetch(
+        `/api/streams/next?creatorId=${encodeURIComponent(creatorId)}`,
+        { method: 'GET' },
+      );
 
       if (!response.ok) {
         const errMsg = await response.json();
@@ -1276,6 +1305,14 @@ export default function StreamView({
                     >
                       <Share2 className="w-4 h-4 mr-2" /> Share
                     </Button>
+                    {sessionMode === 'JAM' && streamRole !== 'BANNED' && streamRole !== 'GUEST' && (
+                      <Button
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-purple-500/20 active:scale-95"
+                      >
+                        Invite Friends
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1321,6 +1358,12 @@ export default function StreamView({
                       creatorId={creatorId}
                       currentUserId={currentUserId}
                       accessStatus={accessStatus}
+                      canControlPlayback={
+                        pathname.startsWith('/party/') &&
+                        sessionMode === 'JAM' &&
+                        streamRole !== 'BANNED' &&
+                        streamRole !== 'GUEST'
+                      }
                       volume={volume}
                       playerRef={playerRef}
                       onReady={(player) => {
@@ -1329,29 +1372,39 @@ export default function StreamView({
                       }}
                       onPlay={() => {
                         const isCreator = !pathname.startsWith('/party/');
+                        const isJamMember =
+                          pathname.startsWith('/party/') &&
+                          sessionMode === 'JAM' &&
+                          streamRole !== 'BANNED' &&
+                          streamRole !== 'GUEST';
                         if (!isJoined && !isCreator) return;
                         setIsPaused(false);
                         setPlaying(true);
-                        if (isCreator && playerRef.current) {
+                        if ((isCreator || isJamMember) && playerRef.current) {
                           const currentTime = playerRef.current.getCurrentTime() || 0;
                           fetch('/api/streams/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ creatorId, type: 'play', currentTime }),
+                            body: JSON.stringify({ creatorId, type: 'play', currentTime, clientTimestamp: Date.now() }),
                           });
                         }
                       }}
                       onPause={() => {
                         const isCreator = !pathname.startsWith('/party/');
+                        const isJamMember =
+                          pathname.startsWith('/party/') &&
+                          sessionMode === 'JAM' &&
+                          streamRole !== 'BANNED' &&
+                          streamRole !== 'GUEST';
                         if (!isJoined && !isCreator) return;
                         setIsPaused(true);
                         setPlaying(false);
-                        if (isCreator && playerRef.current) {
+                        if ((isCreator || isJamMember) && playerRef.current) {
                           const currentTime = playerRef.current.getCurrentTime() || 0;
                           fetch('/api/streams/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ creatorId, type: 'pause', currentTime }),
+                            body: JSON.stringify({ creatorId, type: 'pause', currentTime, clientTimestamp: Date.now() }),
                           });
                         }
                       }}
@@ -1403,7 +1456,7 @@ export default function StreamView({
                             await fetch('/api/streams/sync', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ creatorId, type: 'play', currentTime }),
+                              body: JSON.stringify({ creatorId, type: 'play', currentTime, clientTimestamp: Date.now() }),
                             });
                           } catch (err) {
                             // eslint-disable-next-line no-console
@@ -1417,8 +1470,19 @@ export default function StreamView({
                 </CardContent>
               </Card>
 
-              {!pathname.startsWith('/party/') && (
+              {(() => {
+                const isPartyViewer = pathname.startsWith('/party/');
+                const isJamMember = isPartyViewer && sessionMode === 'JAM' && streamRole !== 'BANNED' && streamRole !== 'GUEST';
+                const canControlPlayback = !isPartyViewer || isJamMember;
+                const canClearQueue = !isPartyViewer;
+                return (
+                canControlPlayback && (
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  {isJamMember && (
+                    <div className="w-full text-center text-[10px] font-black uppercase tracking-widest text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-xl py-2">
+                      Jam mode — you can play, pause, and skip
+                    </div>
+                  )}
                   {currentVideo && (
                     <Button
                       onClick={() => {
@@ -1431,7 +1495,7 @@ export default function StreamView({
                           fetch('/api/streams/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ creatorId, type: 'pause', currentTime }),
+                            body: JSON.stringify({ creatorId, type: 'pause', currentTime, clientTimestamp: Date.now() }),
                           }).catch(console.error);
                         } else {
                           playerRef.current.playVideo();
@@ -1442,7 +1506,7 @@ export default function StreamView({
                           fetch('/api/streams/sync', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ creatorId, type: 'play', currentTime }),
+                            body: JSON.stringify({ creatorId, type: 'play', currentTime, clientTimestamp: Date.now() }),
                           }).catch(console.error);
                         }
                       }}
@@ -1468,7 +1532,7 @@ export default function StreamView({
                     <Play className="mr-2 h-5 w-5 fill-current" />
                     {playNextLoader ? 'Loading...' : currentVideo ? 'Skip' : 'Start'}
                   </Button>
-                  {(currentVideo || queue.length > 0) && (
+                  {canClearQueue && (currentVideo || queue.length > 0) && (
                     <Button
                       onClick={stopQueue}
                       variant="destructive"
@@ -1478,7 +1542,9 @@ export default function StreamView({
                     </Button>
                   )}
                 </div>
-              )}
+                )
+                );
+              })()}
             </div>
 
             <div className="lg:col-span-1 space-y-8">
@@ -1545,6 +1611,18 @@ export default function StreamView({
                 onVote={handleVote}
                 onRemove={handleRemove}
               />
+
+              <ChatPanel
+                creatorId={creatorId}
+                currentUserId={currentUserId}
+                canModerate={
+                  currentUserId === creatorId ||
+                  streamRole === 'MODERATOR' ||
+                  streamRole === 'OWNER'
+                }
+              />
+
+              <RecentlyPlayedPanel creatorId={creatorId} />
             </div>
           </div>
 
@@ -1621,6 +1699,13 @@ export default function StreamView({
                   streamTitle={streamTitle}
                 />
               </div>
+
+              {(currentUserId === creatorId || streamRole === 'OWNER') && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mt-8">
+                  <SavedPlaylistsPanel onLoaded={refreshStreams} />
+                  <CreatorStatsPanel creatorId={creatorId} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1640,6 +1725,11 @@ export default function StreamView({
         onClose={() => setIsPlaylistModalOpen(false)}
         onAddOne={handleAddFromPlaylist}
         onAddAll={handleAddAllFromPlaylist}
+      />
+      <InviteFriendsModal
+        isOpen={isInviteModalOpen}
+        creatorId={creatorId}
+        onClose={() => setIsInviteModalOpen(false)}
       />
     </div>
   );

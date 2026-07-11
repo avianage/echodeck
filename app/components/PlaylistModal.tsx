@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ListPlus, X, Plus } from 'lucide-react';
+import { ListPlus, X, Plus, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import type { YouTubeSearchItem } from '@/types/youtube-api';
+import { useModalA11y } from '@/app/lib/useModalA11y';
 
 interface PlaylistModalProps {
   isOpen: boolean;
@@ -21,11 +23,21 @@ export function PlaylistModal({
   onAddOne,
   onAddAll,
 }: PlaylistModalProps) {
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const containerRef = useModalA11y(isOpen, onClose);
+
+  const handleAddOne = (video: YouTubeSearchItem) => {
+    if (addedIds.has(video.id)) return;
+    setAddedIds((prev) => new Set(prev).add(video.id));
+    onAddOne(video);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-sm">
           <motion.div
+            ref={containerRef}
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -49,9 +61,9 @@ export function PlaylistModal({
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-              {videos.map((video: YouTubeSearchItem, index: number) => (
+              {videos.map((video: YouTubeSearchItem) => (
                 <div
-                  key={`${video.id}-${index}`}
+                  key={video.id}
                   className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-gray-800 hover:bg-white/10 transition-all"
                 >
                   <div className="w-24 h-14 relative flex-shrink-0">
@@ -73,10 +85,15 @@ export function PlaylistModal({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => onAddOne(video)}
+                    disabled={addedIds.has(video.id)}
+                    onClick={() => handleAddOne(video)}
                     className="h-10 w-10 p-0 rounded-full text-gray-400"
                   >
-                    <Plus className="w-5 h-5" />
+                    {addedIds.has(video.id) ? (
+                      <Check className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
                   </Button>
                 </div>
               ))}

@@ -4,6 +4,8 @@ import { authOptions } from '@/app/lib/auth';
 import { prismaClient } from '@/app/lib/db';
 import { getStreamRole } from '@/app/lib/getSessionRole';
 import { hasPermission } from '@/app/lib/permissions';
+import { isRateLimited } from '@/app/lib/rateLimit';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const AccessSchema = z.object({
@@ -56,6 +58,10 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ message: 'User not found' }, { status: 404 });
 
     if (action === 'request') {
+      if (isRateLimited(`access-request:${user.id}:${streamerId}`, 5, 60 * 1000)) {
+        return NextResponse.json({ message: 'Too many requests' }, { status: 429 });
+      }
+
       await prismaClient.streamAccess.upsert({
         where: {
           streamerId_viewerId: {
@@ -79,22 +85,35 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
       }
 
-      await prismaClient.streamAccess.update({
-        where: {
-          streamerId_viewerId: {
-            streamerId,
-            viewerId,
+      try {
+        await prismaClient.streamAccess.update({
+          where: {
+            streamerId_viewerId: {
+              streamerId,
+              viewerId,
+            },
           },
-        },
-        data: {
-          status: action === 'approve' ? 'APPROVED' : 'REJECTED',
-        },
-      });
+          data: {
+            status: action === 'approve' ? 'APPROVED' : 'REJECTED',
+          },
+        });
+      } catch (updateErr) {
+        if (
+          updateErr instanceof Prisma.PrismaClientKnownRequestError &&
+          updateErr.code === 'P2025'
+        ) {
+          return NextResponse.json({ message: 'Access request not found' }, { status: 404 });
+        }
+        throw updateErr;
+      }
       return NextResponse.json({ message: `Access ${action}d` });
     }
 
     return NextResponse.json({ message: 'Invalid action' }, { status: 400 });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ message: err.errors[0]?.message || 'Invalid input' }, { status: 400 });
+    }
     return NextResponse.json({ message: 'Error processing access' }, { status: 500 });
   }
 }

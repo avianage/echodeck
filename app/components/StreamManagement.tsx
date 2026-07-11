@@ -10,6 +10,7 @@ import {
   CheckCircle,
   XCircle,
   Unlock,
+  Timer,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'react-toastify';
@@ -35,6 +36,32 @@ interface RestrictedUser {
   reason: string | null;
 }
 
+interface Member {
+  id: string;
+  username: string | null;
+  displayName: string | null;
+  image: string | null;
+  isModerator: boolean;
+  isBanned: boolean;
+  bannedUntil: string | null;
+  banReason: string | null;
+  joinedAt: string;
+  lastSeenAt: string;
+  isLive: boolean;
+  hasPlaybackRights: boolean;
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 interface StreamManagementProps {
   creatorId: string;
   userRole?: string;
@@ -50,11 +77,19 @@ export function StreamManagement({
 }: StreamManagementProps) {
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [restrictedUsers, setRestrictedUsers] = useState<RestrictedUser[]>([]);
-  const [activeTab, setActiveTab] = useState<'viewers' | 'restricted'>('viewers');
+  const [activeTab, setActiveTab] = useState<'viewers' | 'all' | 'moderators' | 'restricted'>(
+    'viewers',
+  );
   const [searchTerm, setSearchTerm] = useState('');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [sessionMode, setSessionMode] = useState<'BROADCAST' | 'JAM'>('BROADCAST');
+  const [slowModeSeconds, setSlowModeSeconds] = useState(0);
+  const [savingSlowMode, setSavingSlowMode] = useState(false);
+  const [membersCursor, setMembersCursor] = useState<string | null>(null);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<Viewer | null>(null);
+  const [selectedUser, setSelectedUser] = useState<Viewer | Member | null>(null);
   const [isBanModalOpen, setIsBanModalOpen] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<
     { id: string; viewer: { id: string; username: string | null; email?: string | null } }[]
@@ -88,9 +123,51 @@ export function StreamManagement({
     }
   };
 
+  const fetchMembers = async (opts: { append?: boolean; cursor?: string | null } = {}) => {
+    if (activeTab !== 'all' && activeTab !== 'moderators') return;
+    setMembersLoading(true);
+    try {
+      const params = new URLSearchParams({ creatorId });
+      if (activeTab === 'moderators') params.set('role', 'MODERATOR');
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      if (opts.cursor) params.set('cursor', opts.cursor);
+      const res = await fetch(`/api/streams/members?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMembers((prev) => (opts.append ? [...prev, ...data.members] : data.members));
+        setMembersCursor(data.nextCursor ?? null);
+        setSessionMode(data.sessionMode === 'JAM' ? 'JAM' : 'BROADCAST');
+        setSlowModeSeconds(data.slowModeSeconds ?? 0);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch members:', err);
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'all' && activeTab !== 'moderators') return;
+    const handle = setTimeout(() => {
+      fetchMembers();
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, searchTerm, creatorId]);
+
   useEffect(() => {
     fetchViewers();
     fetchRestrictedUsers();
+
+    // Slow-mode state is needed regardless of which tab is active, unlike
+    // the roster tabs' own fetchMembers, which only runs on 'all'/'moderators'.
+    fetch(`/api/streams/members?creatorId=${creatorId}&take=1`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setSlowModeSeconds(data.slowModeSeconds ?? 0);
+      })
+      .catch(() => {});
 
     const fetchAccess = async () => {
       try {
@@ -115,7 +192,7 @@ export function StreamManagement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatorId]);
 
-  const handleToggleMod = async (viewer: Viewer) => {
+  const handleToggleMod = async (viewer: Viewer | Member) => {
     setTogglingId(viewer.id);
     const action = viewer.isModerator ? 'demote' : 'promote';
     try {
@@ -134,6 +211,13 @@ export function StreamManagement({
         setViewers((prev) =>
           prev.map((v) => (v.id === viewer.id ? { ...v, isModerator: !v.isModerator } : v)),
         );
+        if (action === 'demote' && activeTab === 'moderators') {
+          setMembers((prev) => prev.filter((m) => m.id !== viewer.id));
+        } else {
+          setMembers((prev) =>
+            prev.map((m) => (m.id === viewer.id ? { ...m, isModerator: !m.isModerator } : m)),
+          );
+        }
       } else {
         const data = await res.json();
         toast.error(data.message || 'Action failed');
@@ -164,6 +248,7 @@ export function StreamManagement({
         setIsBanModalOpen(false);
         fetchViewers();
         fetchRestrictedUsers();
+        fetchMembers();
       } else {
         toast.error('Action failed');
       }
@@ -188,6 +273,7 @@ export function StreamManagement({
         toast.success(`Restriction lifted for @${username}`);
         fetchRestrictedUsers();
         fetchViewers();
+        fetchMembers();
       } else {
         toast.error('Failed to lift restriction');
       }
@@ -221,6 +307,30 @@ export function StreamManagement({
     }
   };
 
+  const handleSetSlowMode = async (seconds: number) => {
+    setSavingSlowMode(true);
+    const previous = slowModeSeconds;
+    setSlowModeSeconds(seconds);
+    try {
+      const res = await fetch('/api/streams/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creatorId, slowModeSeconds: seconds }),
+      });
+      if (res.ok) {
+        toast.success(seconds === 0 ? 'Slow mode turned off' : `Slow mode set to ${seconds}s`);
+      } else {
+        setSlowModeSeconds(previous);
+        toast.error('Failed to update slow mode');
+      }
+    } catch {
+      setSlowModeSeconds(previous);
+      toast.error('Error communicating with server');
+    } finally {
+      setSavingSlowMode(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Header */}
@@ -241,6 +351,11 @@ export function StreamManagement({
                 Stream: {streamTitle}
               </p>
             )}
+            {sessionMode === 'JAM' && (
+              <span className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                Jam Mode Active
+              </span>
+            )}
           </div>
         </div>
         <Button
@@ -249,6 +364,7 @@ export function StreamManagement({
           onClick={() => {
             fetchViewers();
             fetchRestrictedUsers();
+            fetchMembers();
           }}
           className="rounded-full hover:bg-white/5"
           title="Refresh"
@@ -256,6 +372,32 @@ export function StreamManagement({
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
+
+      {/* Slow Mode Control */}
+      {(userRole === 'CREATOR' || userRole === 'OWNER') && (
+        <div className="flex items-center gap-3 p-3 bg-white/[0.02] border border-white/5 rounded-2xl flex-wrap">
+          <div className="flex items-center gap-2 text-gray-400">
+            <Timer className="w-4 h-4" />
+            <span className="text-[10px] font-black uppercase tracking-widest">Slow Mode</span>
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {[0, 5, 10, 30, 60].map((seconds) => (
+              <button
+                key={seconds}
+                disabled={savingSlowMode}
+                onClick={() => handleSetSlowMode(seconds)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
+                  slowModeSeconds === seconds
+                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                    : 'bg-white/5 text-gray-500 border-white/10 hover:text-gray-300'
+                }`}
+              >
+                {seconds === 0 ? 'Off' : `${seconds}s`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Hub Tabs */}
       <div className="flex gap-2 p-1 bg-white/[0.03] border border-white/5 rounded-2xl">
@@ -268,6 +410,26 @@ export function StreamManagement({
           }`}
         >
           Live Viewers ({viewers.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+            activeTab === 'all'
+              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+              : 'text-gray-500 hover:text-white'
+          }`}
+        >
+          All Viewers
+        </button>
+        <button
+          onClick={() => setActiveTab('moderators')}
+          className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+            activeTab === 'moderators'
+              ? 'bg-primary/10 text-primary border border-primary/20'
+              : 'text-gray-500 hover:text-white'
+          }`}
+        >
+          Moderators
         </button>
         <button
           onClick={() => setActiveTab('restricted')}
@@ -288,7 +450,7 @@ export function StreamManagement({
         </div>
         <input
           type="text"
-          placeholder={`Search ${activeTab === 'viewers' ? 'viewers' : 'restricted users'}...`}
+          placeholder={`Search ${activeTab === 'restricted' ? 'restricted users' : 'viewers'}...`}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full bg-white/[0.03] border border-white/5 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-bold"
@@ -339,11 +501,117 @@ export function StreamManagement({
             <thead>
               <tr className="text-[10px] uppercase tracking-widest text-gray-500 bg-white/[0.03]">
                 <th className="px-6 py-4 font-black">User</th>
+                {(activeTab === 'all' || activeTab === 'moderators') && (
+                  <th className="px-6 py-4 font-black">Last Seen</th>
+                )}
                 <th className="px-6 py-4 font-black text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {activeTab === 'viewers' ? (
+              {activeTab === 'all' || activeTab === 'moderators' ? (
+                members.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center text-gray-500 text-sm italic">
+                      {membersLoading
+                        ? 'Loading…'
+                        : activeTab === 'moderators'
+                          ? 'No moderators found.'
+                          : 'No viewers found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  members.map((member) => (
+                    <tr key={member.id} className="hover:bg-white/[0.02] transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={
+                              member.image ||
+                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.username}`
+                            }
+                            className="w-9 h-9 rounded-xl object-cover border border-white/10"
+                            alt=""
+                          />
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-sm truncate">
+                                @{member.username || 'Anonymous'}
+                              </span>
+                              {member.isModerator && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-primary/20 text-primary border border-primary/30">
+                                  MOD
+                                </span>
+                              )}
+                              {member.hasPlaybackRights && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                  CAN PLAY
+                                </span>
+                              )}
+                              {member.isLive && (
+                                <span
+                                  className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"
+                                  title="Live now"
+                                />
+                              )}
+                            </div>
+                            {member.displayName && (
+                              <span className="text-[10px] text-gray-500 truncate">
+                                {member.displayName}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
+                          {member.isLive ? 'Live now' : formatRelativeTime(member.lastSeenAt)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {(userRole === 'CREATOR' || userRole === 'OWNER') && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={togglingId === member.id}
+                              onClick={() => handleToggleMod(member)}
+                              className={`h-8 px-3 gap-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                member.isModerator
+                                  ? 'bg-primary/10 text-primary border-primary/20 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20'
+                                  : 'bg-white/5 text-gray-400 border-white/10 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                              }`}
+                              title={member.isModerator ? 'Remove Moderator' : 'Make Moderator'}
+                            >
+                              {member.isModerator ? (
+                                <ShieldOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              )}
+                              {member.isModerator ? 'Unmod' : 'Mod'}
+                            </Button>
+                          )}
+                          {member.id !== currentUserId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedUser(member);
+                                setIsBanModalOpen(true);
+                              }}
+                              className="h-8 px-3 gap-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all"
+                              title="Ban / Timeout"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              Restrict
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )
+              ) : activeTab === 'viewers' ? (
                 viewers.length === 0 ? (
                   <tr>
                     <td colSpan={2} className="px-6 py-12 text-center text-gray-500 text-sm italic">
@@ -522,6 +790,19 @@ export function StreamManagement({
             </tbody>
           </table>
         </div>
+        {(activeTab === 'all' || activeTab === 'moderators') && membersCursor && (
+          <div className="flex justify-center py-3 border-t border-white/5">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={membersLoading}
+              onClick={() => fetchMembers({ append: true, cursor: membersCursor })}
+              className="h-8 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10"
+            >
+              Load more
+            </Button>
+          </div>
+        )}
       </div>
 
       {selectedUser && (

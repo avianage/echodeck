@@ -5,6 +5,7 @@ import { signIn } from 'next-auth/react';
 import { X, Mail, LogIn, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'react-toastify';
 
 interface GuestJoinModalProps {
   isOpen: boolean;
@@ -32,11 +33,16 @@ export function GuestJoinModal({
     if (!email) return;
     setLoading(true);
     try {
-      await signIn('email', { email, callbackUrl, redirect: false });
+      const result = await signIn('email', { email, callbackUrl, redirect: false });
+      if (result?.error) {
+        toast.error('Could not send the sign-in link. Please check the address and try again.');
+        return;
+      }
       setIsEmailSent(true);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);
+      toast.error('Could not send the sign-in link. Please try again.');
     } finally {
       setLoading(false);
     }

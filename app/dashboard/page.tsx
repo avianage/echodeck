@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Play, Users, Globe, Lock, Plus, X } from 'lucide-react';
+import { ArrowLeft, Play, Users, Globe, Lock, Plus, X, Radio, Music2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { AddFriendInput } from '../components/AddFriendInput';
 import { FriendRequests } from '../components/FriendRequests';
@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [setupTitle, setSetupTitle] = useState('');
   const [setupGenre, setSetupGenre] = useState('');
   const [setupPublic, setSetupPublic] = useState(true);
+  const [setupMode, setSetupMode] = useState<'BROADCAST' | 'JAM'>('BROADCAST');
   const [clearQueue, setClearQueue] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
 
@@ -103,6 +104,7 @@ export default function Dashboard() {
           genre: setupGenre || null,
           isPublic: setupPublic,
           clearQueue: clearQueue,
+          mode: setupMode,
         }),
       });
     } catch {
@@ -378,6 +380,39 @@ export default function Dashboard() {
                   placeholder="e.g. Lo-fi, Hip-hop, Pop..."
                   className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-600 font-medium text-sm focus:outline-none focus:border-primary/50 transition-colors"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Session Type
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setSetupMode('BROADCAST')}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-bold text-sm transition-all ${
+                      setupMode === 'BROADCAST'
+                        ? 'bg-primary/10 border-primary/30 text-primary'
+                        : 'bg-white/5 border-white/5 text-gray-500 hover:border-white/10'
+                    }`}
+                  >
+                    <Radio className="w-4 h-4" /> Broadcast
+                  </button>
+                  <button
+                    onClick={() => setSetupMode('JAM')}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-bold text-sm transition-all ${
+                      setupMode === 'JAM'
+                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                        : 'bg-white/5 border-white/5 text-gray-500 hover:border-white/10'
+                    }`}
+                  >
+                    <Music2 className="w-4 h-4" /> Jam
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-600 mt-2">
+                  {setupMode === 'JAM'
+                    ? 'Anyone in the session can play, pause, and skip.'
+                    : 'You control playback; everyone else listens and votes.'}
+                </p>
               </div>
 
               <div>

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/app/lib/auth';
 import { getStreamRole } from '@/app/lib/getSessionRole';
 import { hasPermission } from '@/app/lib/permissions';
+import { broadcastToStream } from '@/app/lib/sseManager';
 
 interface SessionUser {
   id?: string;
@@ -32,6 +33,16 @@ export async function POST(_req: NextRequest) {
       userId: userId,
     },
   });
+
+  // Clearing the queue also wipes whatever track CurrentStream points at
+  // (the FK is ON DELETE SET NULL), which previously left stale
+  // currentTime/title fields behind and gave listeners no signal that
+  // playback died vs. just stalled. Reset it explicitly and notify.
+  await prismaClient.currentStream.updateMany({
+    where: { userId },
+    data: { streamId: null, currentTime: 0, isPaused: true, title: null, genre: null },
+  });
+  broadcastToStream(userId, { type: 'queue_cleared' });
 
   return new Response(null, { status: 204 }); // was: 200, now: 204 (deletion)
 }

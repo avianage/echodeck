@@ -7,6 +7,8 @@ import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import { prismaClient } from '@/app/lib/db';
 import { Resend } from 'resend';
 import { logger } from '@/lib/logger';
+import { encryptToken } from '@/app/lib/tokenCrypto';
+import { isRateLimited } from '@/app/lib/rateLimit';
 
 // resend is now instantiated inside the handler to avoid build-time env var requirement
 
@@ -21,6 +23,11 @@ export const authOptions: NextAuthOptions = {
     EmailProvider({
       from: 'EchoDeck <noreply@avianage.in>',
       sendVerificationRequest: async ({ identifier: email, url }) => {
+        if (isRateLimited(`magic-link:${email.toLowerCase()}`, 3, 10 * 60 * 1000)) {
+          logger.warn({ email }, 'Magic-link send rate-limited');
+          return;
+        }
+
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
           from: 'EchoDeck <noreply@avianage.in>',
@@ -90,14 +97,17 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
-      allowDangerousEmailAccountLinking: true,
+      // Do NOT enable allowDangerousEmailAccountLinking: NextAuth's own guard against
+      // silently merging accounts by email is the only backstop besides our manual
+      // verified-link flow (see `signIn` callback below) — disabling it here would
+      // let an attacker who controls an email at the OAuth provider hijack an
+      // existing EchoDeck account without going through that verified flow.
     }),
     SpotifyProvider({
       clientId: process.env.SPOTIFY_CLIENT_ID ?? '',
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET ?? '',
       authorization:
         'https://accounts.spotify.com/authorize?scope=user-read-email%20playlist-read-private%20playlist-read-collaborative%20user-read-private%20user-library-read',
-      allowDangerousEmailAccountLinking: true,
     }),
   ],
   callbacks: {
@@ -119,13 +129,14 @@ export const authOptions: NextAuthOptions = {
         token.provider = account.provider;
 
         // If Spotify is being linked or used for sign-in, update User model fields
-        if (account.provider === 'spotify') {
+        const spotifyUserId = (token.id as string | undefined) || user?.id;
+        if (account.provider === 'spotify' && spotifyUserId) {
           await prismaClient.user.update({
-            where: { id: (token.id as string) || user?.id },
+            where: { id: spotifyUserId },
             data: {
               spotifyConnected: true,
-              spotifyAccessToken: account.access_token,
-              spotifyRefreshToken: account.refresh_token,
+              spotifyAccessToken: encryptToken(account.access_token),
+              spotifyRefreshToken: encryptToken(account.refresh_token),
               spotifyTokenExpiresAt: account.expires_at
                 ? new Date(account.expires_at * 1000)
                 : null,
@@ -174,6 +185,7 @@ export const authOptions: NextAuthOptions = {
           token.bannedUntil = dbUser.bannedUntil;
           token.name = dbUser.displayName || user.name;
           token.picture = dbUser.image || user.image;
+          token.banCheckedAt = Date.now();
         } else {
           token.id = user.id;
           const u = user as User & { username?: string; platformRole?: string };
@@ -181,6 +193,22 @@ export const authOptions: NextAuthOptions = {
           token.platformRole = u.platformRole as 'MEMBER' | 'CREATOR' | 'OWNER' | undefined;
         }
       }
+
+      // Re-check ban status periodically (not on every single request) so a
+      // ban applied mid-session is still enforced within a bounded window,
+      // without paying a DB read on every session check.
+      const BAN_CHECK_TTL_MS = 60 * 1000;
+      const lastChecked = token.banCheckedAt as number | undefined;
+      if (token.id && (!lastChecked || Date.now() - lastChecked > BAN_CHECK_TTL_MS)) {
+        const dbUser = await prismaClient.user.findUnique({
+          where: { id: token.id as string },
+          select: { isBanned: true, bannedUntil: true },
+        });
+        token.isBanned = dbUser?.isBanned;
+        token.bannedUntil = dbUser?.bannedUntil;
+        token.banCheckedAt = Date.now();
+      }
+
       return token;
     },
     async session({ session, token }: { session: Session; token: JWT }) {
@@ -190,22 +218,16 @@ export const authOptions: NextAuthOptions = {
 
       if (session.user) {
         const userId = token.id as string;
-        // Important: Fetch fresh ban status from DB on every session check
-        // This ensures real-time enforcement for active JWT sessions
-        const dbUser = await prismaClient.user.findUnique({
-          where: { id: userId },
-          select: { isBanned: true, bannedUntil: true },
-        });
 
         (session.user as { id?: string }).id = userId;
         (session.user as { username?: string }).username = token.username as string | undefined;
         (session.user as { platformRole?: string }).platformRole = token.platformRole as
           | string
           | undefined;
-        (session.user as { isBanned?: boolean }).isBanned =
-          dbUser?.isBanned ?? (token.isBanned as boolean | undefined);
-        (session.user as { bannedUntil?: Date }).bannedUntil =
-          dbUser?.bannedUntil ?? (token.bannedUntil as Date | undefined);
+        (session.user as { isBanned?: boolean }).isBanned = token.isBanned as boolean | undefined;
+        (session.user as { bannedUntil?: Date }).bannedUntil = token.bannedUntil as
+          | Date
+          | undefined;
         (session.user as { image?: string }).image = token.picture as string | undefined;
       }
       return session;

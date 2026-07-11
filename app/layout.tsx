@@ -10,6 +10,7 @@ import { Appbar } from './components/Appbar';
 import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
 import { MainLayout } from './components/MainLayout';
+import { JamInviteToast } from './components/JamInviteToast';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -66,6 +67,7 @@ export default function RootLayout({
             <MainLayout>{children}</MainLayout>
             <Footer />
             <BottomNav />
+            <JamInviteToast />
             <ToastContainer position="top-right" autoClose={3000} theme="dark" />
           </RestrictionGuardian>
         </Providers>
