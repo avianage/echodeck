@@ -6,7 +6,12 @@ WORKDIR /app
 RUN apk add --no-cache python3 build-base ffmpeg
 
 COPY package*.json ./
-RUN npm install --no-audit --no-fund --omit=dev
+RUN for i in $(seq 1 10); do \
+      npm install --no-audit --no-fund --omit=dev && exit 0; \
+      echo "Retry $i/10..."; \
+      sleep 10; \
+    done; \
+    exit 1
 
 COPY . .
 
