@@ -71,7 +71,7 @@ export async function POST(
     return NextResponse.json({ message: 'No alternate video found' }, { status: 404 });
   }
 
-  const thumbnails = candidate.thumbnail?.thumbnails || candidate.thumbnails || [];
+  const thumbnails = candidate.thumbnail?.thumbnails || [];
   const smallImg = thumbnails[0]?.url || stream.smallImg;
   const bigImg = thumbnails[thumbnails.length - 1]?.url || stream.bigImg;
 

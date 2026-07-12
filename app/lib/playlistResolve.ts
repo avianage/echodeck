@@ -94,7 +94,7 @@ async function resolveYouTubeLinkLine(videoId: string): Promise<ResolvedMixedTra
   }
 
   if (!details) return null;
-  const thumbnails = details.thumbnail?.thumbnails || details.thumbnails || [];
+  const thumbnails = details.thumbnail?.thumbnails || [];
   return {
     extractedId: videoId,
     title: details.title || 'YouTube Video',

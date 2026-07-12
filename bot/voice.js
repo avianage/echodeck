@@ -54,6 +54,7 @@ function spawnFfmpegAudio(sourceUrl) {
 const MAX_CONSECUTIVE_FAILURES = 5;
 
 async function playNext(session) {
+  if (session.stopped) return;
   const track = session.queue[session.cursor];
   if (!track) {
     // Reached the end of the snapshot — refresh from the live queue and
@@ -88,6 +89,7 @@ async function playNext(session) {
       await session.textChannel
         ?.send('❌ Too many unplayable tracks, stopping.')
         .catch((e) => console.error('Failed to send stop message:', e));
+      stop(session.guildId);
       return;
     }
 
@@ -115,7 +117,7 @@ async function playNext(session) {
     // the exact same dead process this handler is reacting to — without
     // this flag, both this handler and the player's own Idle/error
     // listeners below could each call playNext for the same failure.
-    if (session.advancing) return;
+    if (session.advancing || session.stopped) return;
     session.advancing = true;
 
     session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
@@ -123,7 +125,7 @@ async function playNext(session) {
 
     if (session.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
       session.textChannel?.send('❌ Too many unplayable tracks, stopping.');
-      session.advancing = false;
+      stop(session.guildId);
       return;
     }
 
@@ -134,7 +136,6 @@ async function playNext(session) {
       });
   });
 
-  session.consecutiveFailures = 0;
   session.ffmpeg = ffmpeg;
 
   const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Opus });
@@ -166,6 +167,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel) {
   connection.subscribe(player);
 
   const session = {
+    guildId,
     username,
     connection,
     player,
@@ -175,6 +177,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel) {
     textChannel,
     consecutiveFailures: 0,
     advancing: false,
+    stopped: false,
   };
   sessions.set(guildId, session);
 
@@ -182,7 +185,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel) {
   // listener inside playNext for why: these can otherwise double-fire
   // alongside that handler for the same dead resource.
   player.on(AudioPlayerStatus.Idle, () => {
-    if (session.advancing) return;
+    if (session.advancing || session.stopped) return;
     session.advancing = true;
     playNext(session)
       .catch((err) => console.error('Voice playback error:', err))
@@ -192,13 +195,16 @@ export async function joinAndPlay(voiceChannel, username, textChannel) {
   });
   player.on('error', (err) => {
     console.error('Audio player error:', err);
-    if (session.advancing) return;
+    if (session.advancing || session.stopped) return;
     session.advancing = true;
     playNext(session)
       .catch((e) => console.error('Voice playback error:', e))
       .finally(() => {
         session.advancing = false;
       });
+  });
+  player.on(AudioPlayerStatus.Playing, () => {
+    session.consecutiveFailures = 0;
   });
 
   await playNext(session);
@@ -209,6 +215,7 @@ export function stop(guildId) {
   const session = sessions.get(guildId);
   if (!session) return false;
 
+  session.stopped = true;
   session.player.stop();
   session.ffmpeg?.kill('SIGKILL');
   session.connection.destroy();
