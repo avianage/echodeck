@@ -243,10 +243,11 @@ export default function StreamView({
     async (isInitial: boolean = false) => {
       try {
         lastRefreshRef.current = Date.now();
-        console.log(
-          'Fetching streams from API...',
-          isInitial ? '(Initial Load / Reset Access)' : '',
-        );
+        if (isInitial) {
+          console.log('Fetching streams from API... (Initial Load / Reset Access)');
+        } else {
+          console.log('Fetching streams from API...');
+        }
         const res = await fetch(
           `/api/streams/?creatorId=${creatorId}${isInitial ? '&resetAccess=true' : ''}`,
           {
@@ -633,7 +634,7 @@ export default function StreamView({
           });
         }
       },
-      pathname.startsWith('/party/') ? 500 : 2000,
+      pathname.startsWith('/party/') ? 4000 : 3000,
     );
 
     return () => {
@@ -794,14 +795,25 @@ export default function StreamView({
     // Reset ready state on video change
     setIsPlayerReady(false);
 
-    // Force-enable GO LIVE after 5s if onReady never fires
+    // Force-enable GO LIVE after 15s if onReady never fires (yt-dlp resolve +
+    // proxy chain can take longer than 5s under load or rate-limiting).
     const fallbackTimer = setTimeout(() => {
       setIsPlayerReady(true);
       console.warn('⚠️ onReady never fired — forcing player ready state');
-    }, 5000);
+    }, 15000);
 
     return () => clearTimeout(fallbackTimer);
   }, [currentVideo?.extractedId]);
+
+  // Pre-warm the server-side resolve cache for the next queued track so the
+  // transition is near-instant instead of waiting on a fresh yt-dlp spawn.
+  useEffect(() => {
+    const nextVideo = queue[0];
+    if (!nextVideo?.extractedId || nextVideo.extractedId === currentVideo?.extractedId) return;
+    fetch(`/api/streams/resolve?videoId=${encodeURIComponent(nextVideo.extractedId)}&format=video`, {
+      credentials: 'include',
+    }).catch(() => {});
+  }, [queue, currentVideo?.extractedId]);
 
   useEffect(() => {
     if (
@@ -1167,10 +1179,10 @@ export default function StreamView({
   };
 
   const handleGoLive = async () => {
-    if (!playerRef.current) return;
-
-    // Autoplay compliance: call playVideo directly within the user gesture handler
-    if (typeof playerRef.current.playVideo === 'function') {
+    // Call playVideo within the user gesture for autoplay compliance.
+    // If the player ref isn't set yet (video still loading), skip it —
+    // setPlaying(true) below will trigger playback reactively once isReady fires.
+    if (playerRef.current && typeof playerRef.current.playVideo === 'function') {
       playerRef.current.playVideo();
     }
 
@@ -1188,7 +1200,7 @@ export default function StreamView({
         const data = await res.json();
         if (data.currentTime !== undefined) {
           console.log('🎯 Immediate sync on join:', data.currentTime);
-          playerRef.current.seekTo(data.currentTime, true);
+          playerRef.current?.seekTo(data.currentTime, true);
           setPlaying(!data.isPaused);
           setIsPaused(data.isPaused);
         }
@@ -1203,7 +1215,7 @@ export default function StreamView({
     // Final sync attempt (Pusher fallback)
     if (lastSync) {
       console.log('Applying final cached sync on join:', lastSync);
-      playerRef.current.seekTo(lastSync.currentTime, true);
+      playerRef.current?.seekTo(lastSync.currentTime, true);
       if (lastSync.type === 'play') setPlaying(true);
       else setPlaying(false);
       setLastSync(null);

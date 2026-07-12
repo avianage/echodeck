@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prismaClient } from '@/app/lib/db';
 import { logger } from '@/lib/logger';
 
-// Public, unauthenticated read endpoint for the Discord bot (see /bot). Only
-// exposes what's already shown on a creator's public stream page — nothing
-// a session-authenticated route wouldn't already reveal to any viewer.
 export async function GET(req: NextRequest) {
+  const secret = req.headers.get('x-bot-secret');
+  if (!secret || secret !== process.env.BOT_INTERNAL_SECRET) {
+    return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+  }
+
   const username = req.nextUrl.searchParams.get('username')?.toLowerCase();
   if (!username) {
     return NextResponse.json({ message: 'username query param is required' }, { status: 400 });

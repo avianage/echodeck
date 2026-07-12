@@ -46,25 +46,34 @@ export default function DiscoverPage() {
   }, []);
 
   useEffect(() => {
-    const searchUsers = async () => {
-      if (searchQuery.length < 2) {
-        setUserResults([]);
-        return;
-      }
+    if (searchQuery.length < 2) {
+      setUserResults([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
       setSearchingUsers(true);
       try {
-        const res = await fetch(`/api/user/search?q=${encodeURIComponent(searchQuery)}`);
+        const res = await fetch(`/api/user/search?q=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        });
         const data = await res.json();
         setUserResults(data.users || []);
       } catch (error) {
-        // TODO: replace with logger - console.error('Failed to search users:', error);
+        if ((error as Error).name !== 'AbortError') {
+          // TODO: replace with logger
+        }
       } finally {
         setSearchingUsers(false);
       }
-    };
+    }, 300);
 
-    const timer = setTimeout(searchUsers, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   const handleJoinClick = (stream: StreamData) => {

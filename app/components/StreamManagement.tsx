@@ -123,6 +123,23 @@ export function StreamManagement({
     }
   };
 
+  const fetchManagementData = async () => {
+    try {
+      const res = await fetch(`/api/streams/management-panel?creatorId=${creatorId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setViewers(data.viewers);
+        setRestrictedUsers(data.restricted);
+        setPendingRequests(data.requests || []);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch management data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchMembers = async (opts: { append?: boolean; cursor?: string | null } = {}) => {
     if (activeTab !== 'all' && activeTab !== 'moderators') return;
     setMembersLoading(true);
@@ -157,8 +174,7 @@ export function StreamManagement({
   }, [activeTab, searchTerm, creatorId]);
 
   useEffect(() => {
-    fetchViewers();
-    fetchRestrictedUsers();
+    fetchManagementData();
 
     // Slow-mode state is needed regardless of which tab is active, unlike
     // the roster tabs' own fetchMembers, which only runs on 'all'/'moderators'.
@@ -169,25 +185,7 @@ export function StreamManagement({
       })
       .catch(() => {});
 
-    const fetchAccess = async () => {
-      try {
-        const res = await fetch(`/api/streams/access?creatorId=${creatorId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setPendingRequests(data.requests || []);
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to fetch access requests:', err);
-      }
-    };
-    fetchAccess();
-
-    const interval = setInterval(() => {
-      fetchViewers();
-      fetchRestrictedUsers();
-      fetchAccess();
-    }, 2000);
+    const interval = setInterval(fetchManagementData, 8000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatorId]);
@@ -362,8 +360,7 @@ export function StreamManagement({
           variant="ghost"
           size="icon"
           onClick={() => {
-            fetchViewers();
-            fetchRestrictedUsers();
+            fetchManagementData();
             fetchMembers();
           }}
           className="rounded-full hover:bg-white/5"

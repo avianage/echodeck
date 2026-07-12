@@ -1,10 +1,18 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Partials, EmbedBuilder } from 'discord.js';
-import { joinAndPlay, stop, isPlaying } from './voice.js';
+import {
+  joinAndPlay,
+  stop,
+  isPlaying,
+  isBotOwnedSession,
+  startEmptyChannelGrace,
+  cancelEmptyChannelGrace,
+} from './voice.js';
 
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
 const COMMAND_PREFIX = process.env.BOT_COMMAND_PREFIX || '!';
+const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET;
 
 if (!DISCORD_TOKEN) {
   throw new Error('DISCORD_BOT_TOKEN environment variable is required');
@@ -22,7 +30,7 @@ const client = new Client({
 
 async function fetchBotApi(path, username) {
   const url = `${API_BASE}${path}?username=${encodeURIComponent(username)}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { 'x-bot-secret': BOT_INTERNAL_SECRET } });
   const body = await res.json();
   if (!res.ok) {
     return { ok: false, message: body.message || 'Something went wrong' };
@@ -107,15 +115,86 @@ async function handleLeave(message) {
     await message.reply("I'm not currently playing anything here.");
     return;
   }
+  // Only end a bot-owned stream from !leave; human-created streams are not
+  // the bot's to tear down (the web app manages their lifecycle).
+  if (!isBotOwnedSession(guildId)) {
+    stop(guildId);
+    await message.reply('👋 Left the voice channel.');
+    return;
+  }
   stop(guildId);
-  await message.reply('👋 Left the voice channel.');
+  await message.reply('👋 Left the voice channel and ended the bot session.');
+}
+
+async function handleCreate(message, query) {
+  const guildId = message.guild?.id;
+  if (!guildId) return;
+
+  if (isPlaying(guildId)) {
+    await message.reply(
+      `Already playing in this server. Use \`${COMMAND_PREFIX}leave\` first, then run \`${COMMAND_PREFIX}create\` again.`,
+    );
+    return;
+  }
+
+  const voiceChannel = message.member?.voice?.channel;
+  if (!voiceChannel) {
+    await message.reply('Join a voice channel first, then run this command.');
+    return;
+  }
+
+  const thinking = await message.reply('🔎 Finding track…');
+
+  let stream, botUsername;
+  try {
+    const res = await fetch(`${API_BASE}/api/bot/streams`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-bot-secret': BOT_INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ query }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      await thinking.edit(`❌ ${body.message || 'Could not create stream.'}`);
+      return;
+    }
+    ({ stream, botUsername } = body);
+  } catch (err) {
+    console.error('!create POST /api/bot/streams error:', err);
+    await thinking.edit('❌ Could not reach EchoDeck. Try again in a moment.');
+    return;
+  }
+
+  try {
+    await joinAndPlay(voiceChannel, botUsername, message.channel, { isBotOwned: true });
+  } catch (err) {
+    await thinking.edit(`❌ Couldn't start playback: ${err.message}`);
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('🎵 Now Playing')
+    .setDescription(stream.title || 'Untitled')
+    .setThumbnail(stream.smallImg || null)
+    .setFooter({ text: `Playing in ${voiceChannel.name} · ${COMMAND_PREFIX}leave to stop` });
+
+  await thinking.edit({ content: '', embeds: [embed] });
 }
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content.startsWith(COMMAND_PREFIX)) return;
 
-  const [rawCommand, username] = message.content.slice(COMMAND_PREFIX.length).trim().split(/\s+/);
-  const command = rawCommand?.toLowerCase();
+  // Split into the command word and the full remainder (preserves spaces in queries).
+  const trimmed = message.content.slice(COMMAND_PREFIX.length).trim();
+  const spaceIdx = trimmed.indexOf(' ');
+  const rawCommand = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+  const argText = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1).trim();
+  const command = rawCommand.toLowerCase();
+  // For commands that only need the first word arg (join, nowplaying, etc.)
+  const username = argText.split(/\s+/)[0] || '';
 
   try {
     switch (command) {
@@ -135,6 +214,20 @@ client.on('messageCreate', async (message) => {
         if (!username) return void (await message.reply({ embeds: [usageEmbed('join')] }));
         await handleJoin(message, username);
         break;
+      case 'create':
+        if (!argText) {
+          return void (await message.reply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0xed4245)
+                .setDescription(
+                  `Usage: \`${COMMAND_PREFIX}create <song name, artist, or YouTube/Spotify URL>\``,
+                ),
+            ],
+          }));
+        }
+        await handleCreate(message, argText);
+        break;
       case 'leave':
         await handleLeave(message);
         break;
@@ -144,6 +237,30 @@ client.on('messageCreate', async (message) => {
   } catch (err) {
     console.error('Command handler error:', err);
     await message.reply('Something went wrong reaching EchoDeck. Try again in a moment.');
+  }
+});
+
+// Monitor the bot's voice channel for departures. When no non-bot members
+// remain, start the grace-period countdown. Cancel it if someone rejoins.
+// Only applies to bot-owned sessions — human-created sessions manage their
+// own lifecycle through the web app.
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const guildId = oldState.guild?.id ?? newState.guild?.id;
+  if (!guildId) return;
+  if (!isPlaying(guildId) || !isBotOwnedSession(guildId)) return;
+
+  // Ignore the bot's own voice state transitions.
+  if (oldState.member?.user.bot || newState.member?.user.bot) return;
+
+  const botMember = (oldState.guild ?? newState.guild).members.cache.get(client.user?.id);
+  const botChannel = botMember?.voice?.channel;
+  if (!botChannel) return;
+
+  const nonBotCount = botChannel.members.filter((m) => !m.user.bot).size;
+  if (nonBotCount === 0) {
+    startEmptyChannelGrace(guildId);
+  } else {
+    cancelEmptyChannelGrace(guildId);
   }
 });
 

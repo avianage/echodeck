@@ -14,6 +14,13 @@ interface CacheEntry {
 const resolveCache = new Map<string, CacheEntry>();
 const resolveVideoCache = new Map<string, CacheEntry>();
 
+// In-flight deduplication: if two callers request the same videoId before
+// yt-dlp finishes, return the same promise instead of spawning a second
+// process. Without this, the pre-warm and the player firing simultaneously
+// on song start each spawn their own yt-dlp and race.
+const inflightAudio = new Map<string, Promise<string>>();
+const inflightVideo = new Map<string, Promise<string>>();
+
 // In production, use the system yt-dlp binary (installed via apk in Docker).
 // Locally, fall back to yt-dlp-exec's own default export, which is bound to
 // its vendored binary in node_modules/yt-dlp-exec/bin — passing `undefined`
@@ -27,22 +34,34 @@ export async function resolveAudioUrl(videoId: string): Promise<string> {
     return cached.url;
   }
 
-  const stdout = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: 'bestaudio',
-    getUrl: true,
-    noWarnings: true,
-    noCheckCertificate: true,
-    preferFreeFormats: true,
-  });
+  const inflight = inflightAudio.get(videoId);
+  if (inflight) return inflight;
 
-  const url = String(stdout).trim().split('\n')[0];
-  if (!url || !url.startsWith('http')) {
-    logger.error({ videoId, stdout }, 'yt-dlp did not return a resolvable audio URL');
-    throw new Error('Failed to resolve audio URL');
-  }
+  const promise = (async () => {
+    try {
+      const stdout = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+        format: 'bestaudio',
+        getUrl: true,
+        noWarnings: true,
+        noCheckCertificate: true,
+        preferFreeFormats: true,
+      });
 
-  resolveCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
-  return url;
+      const url = String(stdout).trim().split('\n')[0];
+      if (!url || !url.startsWith('http')) {
+        logger.error({ videoId, stdout }, 'yt-dlp did not return a resolvable audio URL');
+        throw new Error('Failed to resolve audio URL');
+      }
+
+      resolveCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
+      return url;
+    } finally {
+      inflightAudio.delete(videoId);
+    }
+  })();
+
+  inflightAudio.set(videoId, promise);
+  return promise;
 }
 
 // A progressive (single-file, audio+video muxed) format, since we're only
@@ -55,20 +74,32 @@ export async function resolveVideoUrl(videoId: string): Promise<string> {
     return cached.url;
   }
 
-  const stdout = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: 'best[ext=mp4]/best',
-    getUrl: true,
-    noWarnings: true,
-    noCheckCertificate: true,
-    preferFreeFormats: true,
-  });
+  const inflight = inflightVideo.get(videoId);
+  if (inflight) return inflight;
 
-  const url = String(stdout).trim().split('\n')[0];
-  if (!url || !url.startsWith('http')) {
-    logger.error({ videoId, stdout }, 'yt-dlp did not return a resolvable video URL');
-    throw new Error('Failed to resolve video URL');
-  }
+  const promise = (async () => {
+    try {
+      const stdout = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+        format: 'best[ext=mp4]/best',
+        getUrl: true,
+        noWarnings: true,
+        noCheckCertificate: true,
+        preferFreeFormats: true,
+      });
 
-  resolveVideoCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
-  return url;
+      const url = String(stdout).trim().split('\n')[0];
+      if (!url || !url.startsWith('http')) {
+        logger.error({ videoId, stdout }, 'yt-dlp did not return a resolvable video URL');
+        throw new Error('Failed to resolve video URL');
+      }
+
+      resolveVideoCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
+      return url;
+    } finally {
+      inflightVideo.delete(videoId);
+    }
+  })();
+
+  inflightVideo.set(videoId, promise);
+  return promise;
 }

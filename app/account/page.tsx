@@ -98,9 +98,18 @@ export default function AccountPage() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const res = await fetch('/api/user/me');
-        if (res.ok) {
-          const data = await res.json();
+        const [meRes, privRes] = await Promise.all([
+          fetch('/api/user/me'),
+          fetch('/api/user/privacy'),
+        ]);
+
+        if (meRes.status === 404 || meRes.status === 401) {
+          await signOut({ callbackUrl: '/' });
+          return;
+        }
+
+        if (meRes.ok) {
+          const data = await meRes.json();
           if (!data.user) {
             await signOut({ callbackUrl: '/' });
             return;
@@ -108,15 +117,14 @@ export default function AccountPage() {
           setUserData(data.user as UserData);
           setNewUsername(data.user.username || '');
           setNewDisplayName(data.user.displayName || (session?.user?.name ?? '') || '');
+          setPartyCode(data.user.partyCode);
+        }
 
-          const privRes = await fetch('/api/user/privacy');
+        if (privRes.ok) {
           const privData = await privRes.json();
           if (privData.allowFriendRequests !== undefined)
             setAllowFriendRequests(privData.allowFriendRequests);
           if (privData.isPublic !== undefined) setIsPublic(privData.isPublic);
-          setPartyCode(data.user.partyCode);
-        } else if (res.status === 404 || res.status === 401) {
-          await signOut({ callbackUrl: '/' });
         }
       } catch (err) {
         // eslint-disable-next-line no-console

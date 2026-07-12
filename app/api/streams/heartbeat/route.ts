@@ -10,6 +10,12 @@ import { broadcastToStream } from '@/app/lib/sseManager';
 import { ACTIVE_VIEWER_WINDOW_MS } from '@/app/lib/presence';
 import { logger } from '@/lib/logger';
 
+// Throttle the listeningActivity COUNT query to at most once per 5 seconds per
+// creator. Without this the COUNT runs on every listener heartbeat tick (every
+// 4 s per client), so 50 concurrent viewers fire 50 COUNTs/4 s instead of 1.
+const COUNT_THROTTLE_MS = 5_000;
+const viewerCountCache = new Map<string, { count: number; ts: number }>();
+
 type CurrentStreamWithStream = Prisma.CurrentStreamGetPayload<{ include: { stream: true } }>;
 
 const HeartbeatSchema = z.object({
@@ -175,14 +181,19 @@ export async function POST(req: NextRequest) {
         }),
       ]);
 
-      const activeCount = await prismaClient.listeningActivity.count({
-        where: {
-          creatorId: data.creatorId,
-          updatedAt: {
-            gte: new Date(Date.now() - ACTIVE_VIEWER_WINDOW_MS),
+      const cached = viewerCountCache.get(data.creatorId);
+      let activeCount: number;
+      if (cached && Date.now() - cached.ts < COUNT_THROTTLE_MS) {
+        activeCount = cached.count;
+      } else {
+        activeCount = await prismaClient.listeningActivity.count({
+          where: {
+            creatorId: data.creatorId,
+            updatedAt: { gte: new Date(Date.now() - ACTIVE_VIEWER_WINDOW_MS) },
           },
-        },
-      });
+        });
+        viewerCountCache.set(data.creatorId, { count: activeCount, ts: Date.now() });
+      }
 
       // Only write viewerCount/peakViewerCount when the count actually
       // changed — otherwise every single listener heartbeat writes this row.

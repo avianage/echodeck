@@ -12,16 +12,34 @@ import {
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
 const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET;
 
+// How long (ms) to wait after the voice channel empties before ending a bot-owned
+// stream. Configurable via BOT_EMPTY_GRACE_SECONDS (default: 300 = 5 minutes).
+const EMPTY_CHANNEL_GRACE_MS =
+  parseInt(process.env.BOT_EMPTY_GRACE_SECONDS || '300', 10) * 1000;
+
 // Per-guild playback state. The bot advances through the queue on its own
 // timeline (see plan: "independent player, same queue") — it never mutates
 // the web app's played/CurrentStream state, it only reads the queue snapshot.
 const sessions = new Map();
 
 async function fetchQueue(username) {
-  const res = await fetch(`${API_BASE}/api/bot/queue?username=${encodeURIComponent(username)}`);
+  const res = await fetch(`${API_BASE}/api/bot/queue?username=${encodeURIComponent(username)}`, {
+    headers: { 'x-bot-secret': BOT_INTERNAL_SECRET },
+  });
   const body = await res.json();
   if (!res.ok) throw new Error(body.message || 'Failed to fetch queue');
   return body.queue;
+}
+
+async function endBotStream() {
+  try {
+    await fetch(`${API_BASE}/api/bot/streams`, {
+      method: 'DELETE',
+      headers: { 'x-bot-secret': BOT_INTERNAL_SECRET },
+    });
+  } catch (err) {
+    console.error('Failed to call bot stream teardown endpoint:', err);
+  }
 }
 
 async function resolveAudioUrl(videoId) {
@@ -142,7 +160,7 @@ async function playNext(session) {
   session.player.play(resource);
 }
 
-export async function joinAndPlay(voiceChannel, username, textChannel) {
+export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOwned = false } = {}) {
   const guildId = voiceChannel.guild.id;
 
   const existing = sessions.get(guildId);
@@ -178,6 +196,8 @@ export async function joinAndPlay(voiceChannel, username, textChannel) {
     consecutiveFailures: 0,
     advancing: false,
     stopped: false,
+    isBotOwned,
+    emptyChannelTimer: null,
   };
   sessions.set(guildId, session);
 
@@ -215,12 +235,53 @@ export function stop(guildId) {
   const session = sessions.get(guildId);
   if (!session) return false;
 
+  if (session.emptyChannelTimer) {
+    clearTimeout(session.emptyChannelTimer);
+    session.emptyChannelTimer = null;
+  }
+
   session.stopped = true;
   session.player.stop();
   session.ffmpeg?.kill('SIGKILL');
   session.connection.destroy();
   sessions.delete(guildId);
+
+  if (session.isBotOwned) {
+    endBotStream();
+  }
+
   return true;
+}
+
+export function isBotOwnedSession(guildId) {
+  return sessions.get(guildId)?.isBotOwned === true;
+}
+
+// Starts (or resets) the grace-period timer for an empty voice channel.
+// When the timer fires, the bot-owned session is torn down.
+export function startEmptyChannelGrace(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || !session.isBotOwned) return;
+
+  if (session.emptyChannelTimer) {
+    clearTimeout(session.emptyChannelTimer);
+  }
+
+  session.emptyChannelTimer = setTimeout(() => {
+    session.emptyChannelTimer = null;
+    session.textChannel
+      ?.send('👋 Voice channel has been empty for a while — stopping playback.')
+      .catch(() => {});
+    stop(guildId);
+  }, EMPTY_CHANNEL_GRACE_MS);
+}
+
+// Cancels the grace-period timer (call when someone rejoins the channel).
+export function cancelEmptyChannelGrace(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || !session.emptyChannelTimer) return;
+  clearTimeout(session.emptyChannelTimer);
+  session.emptyChannelTimer = null;
 }
 
 export function isPlaying(guildId) {

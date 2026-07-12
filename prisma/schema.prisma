@@ -248,6 +248,8 @@ model StreamEvent {
   message   String
   createdAt DateTime        @default(now())
   expiresAt DateTime
+
+  @@index([creatorId, createdAt])
 }
 
 model JamInvite {

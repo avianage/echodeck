@@ -5,6 +5,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { Providers } from './provider';
 import React from 'react';
+import Script from 'next/script';
 import { WindowsTitleBar } from './components/WindowsTitleBar';
 import { Appbar } from './components/Appbar';
 import { BottomNav } from './components/BottomNav';
@@ -23,6 +24,7 @@ const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
   display: 'swap',
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -73,6 +75,11 @@ export default function RootLayout({
             <ToastContainer position="top-right" autoClose={3000} theme="dark" />
           </RestrictionGuardian>
         </Providers>
+        <Script
+          src="https://static.cloudflareinsights.com/beacon.min.js"
+          data-cf-beacon={`{"token": "${process.env.NEXT_PUBLIC_CF_BEACON_TOKEN}"}`}
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

@@ -14,6 +14,7 @@ import { hasPermission } from '@/app/lib/permissions';
 import { getValidSpotifyToken } from '@/app/lib/spotifyToken';
 import type { SpotifyTrack, YouTubeVideoDetails, YouTubeThumbnail } from '@/types';
 import { logger } from '@/lib/logger';
+import { resolveVideoUrl } from '@/app/lib/ytdlp';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const spotifyUrlInfoFn = require('spotify-url-info');
@@ -138,13 +139,31 @@ export async function POST(req: NextRequest) {
         if (!smallImg) smallImg = `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`;
         if (!bigImg) bigImg = `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
       } catch (e: unknown) {
-        logger.error({ err: e }, `❌ YouTube detail fetching failed:`);
-        return NextResponse.json(
-          {
-            message: `Failed to fetch video details. This video might be restricted or unavailable.`,
-          },
-          { status: 400 },
-        );
+        logger.warn({ err: e }, `⚠️ youtube-search-api failed, trying oEmbed fallback...`);
+        // youtube-search-api scrapes YouTube's internal API and gets blocked on server/VPS IPs.
+        // oEmbed is an official public endpoint that works from any IP without auth.
+        try {
+          const oembedRes = await withTimeout(
+            fetch(
+              `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${extractedId}&format=json`,
+            ),
+            5000,
+          );
+          if (!oembedRes.ok) throw new Error(`oEmbed returned ${oembedRes.status}`);
+          const oembed = await oembedRes.json();
+          title = oembed.title || '';
+          smallImg = `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`;
+          bigImg = `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
+          logger.info(`✅ oEmbed fallback succeeded for ${extractedId}`);
+        } catch (oembedErr: unknown) {
+          logger.error({ err: oembedErr }, `❌ oEmbed fallback also failed for ${extractedId}`);
+          return NextResponse.json(
+            {
+              message: `Failed to fetch video details. This video might be restricted or unavailable.`,
+            },
+            { status: 400 },
+          );
+        }
       }
     } else if (isSpotify) {
       streamType = 'Spotify';
@@ -389,6 +408,13 @@ export async function POST(req: NextRequest) {
         isPublic: data.isPublic ?? creator.isPublic,
       },
     });
+
+    // Fire-and-forget: warm the yt-dlp resolve cache now so the player gets
+    // a near-instant cache hit instead of waiting for a cold yt-dlp spawn
+    // when this song eventually plays.
+    resolveVideoUrl(extractedId).catch((err) =>
+      logger.warn({ err, extractedId }, '⚠️ Background resolve pre-warm failed'),
+    );
 
     return NextResponse.json(
       {
