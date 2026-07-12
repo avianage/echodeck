@@ -43,6 +43,9 @@ WORKDIR /app
 
 # Install runtime dependencies for yt-dlp (system package), ffmpeg, and python3
 RUN apk add --no-cache python3 ffmpeg yt-dlp
+# Overwrite the apk-installed yt-dlp with the latest binary (pre-downloaded on
+# the host by the deploy script to avoid Docker bridge network issues).
+COPY bin/yt-dlp /usr/local/bin/yt-dlp
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

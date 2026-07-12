@@ -54,3 +54,4 @@ eslint-*.json
 lint-*.txt
 ts_error*.txt
 warnings.txt
+bin/yt-dlp
