@@ -11,6 +11,7 @@ import { BottomNav } from './components/BottomNav';
 import { Footer } from './components/Footer';
 import { MainLayout } from './components/MainLayout';
 import { JamInviteToast } from './components/JamInviteToast';
+import { ServiceWorkerRegister } from './components/ServiceWorkerRegister';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -68,6 +69,7 @@ export default function RootLayout({
             <Footer />
             <BottomNav />
             <JamInviteToast />
+            <ServiceWorkerRegister />
             <ToastContainer position="top-right" autoClose={3000} theme="dark" />
           </RestrictionGuardian>
         </Providers>

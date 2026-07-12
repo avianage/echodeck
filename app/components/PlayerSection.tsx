@@ -1,9 +1,22 @@
-import React, { useEffect } from 'react';
-import { YouTubePlayer } from './YouTubePlayer';
+import React, { useEffect, useState } from 'react';
+import { MediaStreamPlayer } from './MediaStreamPlayer';
 import Image from 'next/image';
-import { Play, VolumeX, Volume2 } from 'lucide-react';
+import { Play, VolumeX, Volume2, EyeOff, Video as VideoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { YTPlayer } from '@/types/youtube';
+
+const VIEW_MODE_STORAGE_KEY = 'echodeck:playerViewMode';
+
+// Just visually covers the video — the underlying stream (video element,
+// audio included) keeps playing completely untouched underneath. No
+// re-resolve, no format switch, no restart risk: this is purely a CSS cover.
+function VideoHiddenOverlay() {
+  return (
+    <div className="absolute inset-0 z-[15] flex items-center justify-center bg-gray-950 text-gray-500 text-sm font-medium">
+      Video hidden — audio still playing
+    </div>
+  );
+}
 
 interface Video {
   id: string;
@@ -29,13 +42,9 @@ interface PlayerSectionProps {
   isPaused: boolean;
   isJoined: boolean;
   isPlayerReady: boolean;
-  resolvedUrl: string | null;
   pathname: string;
-  creatorId: string;
   currentUserId: string | null;
   accessStatus: string | null;
-  /** True for the creator, or a jam member with playback rights — gets native embed controls. */
-  canControlPlayback?: boolean;
   volume: number;
   playerRef: React.RefObject<YTPlayer | null>;
   onReady: (player: YTPlayer) => void;
@@ -58,12 +67,9 @@ export function PlayerSection({
   isPaused,
   isJoined,
   isPlayerReady,
-  resolvedUrl: _resolvedUrl,
   pathname,
-  creatorId,
   currentUserId,
   accessStatus: _accessStatus,
-  canControlPlayback,
   volume,
   playerRef,
   onReady,
@@ -77,6 +83,23 @@ export function PlayerSection({
   onPlayClick: _onPlayClick,
   onRequestAccess: _onRequestAccess,
 }: PlayerSectionProps) {
+  // Per-viewer preference (not stream state — no sync/broadcast), so each
+  // person watching can independently choose to hide the video. The
+  // underlying stream is always resolved/played as 'video' regardless of
+  // this setting — toggling it never touches playback, it only shows/hides
+  // a CSS overlay, so there's no restart, no re-resolve, no rate-limit risk.
+  const [videoHidden, setVideoHidden] = useState(false);
+  useEffect(() => {
+    setVideoHidden(localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'audio');
+  }, []);
+  const toggleVideoHidden = () => {
+    setVideoHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, next ? 'audio' : 'video');
+      return next;
+    });
+  };
+
   // Enforce 1x playback speed aggressively against extensions
   useEffect(() => {
     const interval = setInterval(() => {
@@ -96,6 +119,22 @@ export function PlayerSection({
       <div className="flex flex-col items-center justify-center py-20 text-gray-400 space-y-4">
         <Play className="w-10 h-10 opacity-20" />
         <p className="text-lg">No video playing</p>
+      </div>
+    );
+  }
+
+  if (currentUserId === null) {
+    // currentUserId resolves shortly after mount (once the initial
+    // refreshStreams() call completes). Mounting the player before then
+    // would compute isHost as false even for the real creator, then flip
+    // it true a moment later — and since YouTube's IFrame API can't change
+    // `controls` without fully recreating the player, that flip destroys
+    // and rebuilds the instance while `isPlayerReady` stays stuck true,
+    // leaving "Start Session" silently clicking a dead player reference.
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 space-y-4">
+        <Play className="w-10 h-10 opacity-20 animate-pulse" />
+        <p className="text-lg">Loading…</p>
       </div>
     );
   }
@@ -130,9 +169,8 @@ export function PlayerSection({
   return (
     <div className="w-full relative">
       <div className="relative w-full aspect-video md:h-[360px] lg:h-[450px] bg-black bg-opacity-90 overflow-hidden rounded-xl shadow-2xl">
-        <YouTubePlayer
+        <MediaStreamPlayer
           videoId={currentVideo.extractedId}
-          isHost={currentUserId === creatorId || !!canControlPlayback}
           playing={playing}
           volume={volume}
           muted={isMuted}
@@ -148,6 +186,9 @@ export function PlayerSection({
           }}
           onError={onError}
         />
+        {/* Just a CSS cover over the video — the underlying stream (audio
+            included) keeps playing exactly as-is underneath. */}
+        {videoHidden && <VideoHiddenOverlay />}
 
         {!isJoined && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4">
@@ -203,35 +244,55 @@ export function PlayerSection({
           </div>
         )}
 
-        {/* Global Volume Control — only for listeners, not the creator */}
-        {currentUserId !== creatorId && (
-          <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-black/60 px-3 py-2 rounded-xl border border-white/5 backdrop-blur-md group/vol transition-all hover:pr-4">
-              <Button
-                onClick={onMuteToggle}
-                size="sm"
-                aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}
-                className="bg-transparent hover:bg-white/5 text-white h-7 w-7 p-0"
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="h-4 w-4 text-red-400" />
-                ) : (
-                  <Volume2 className="h-4 w-4 text-blue-400" />
-                )}
-              </Button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                aria-label="Volume"
-                className="w-0 group-hover/vol:w-20 transition-all cursor-pointer accent-blue-500 h-1 bg-white/20 rounded-lg appearance-none overflow-hidden"
-              />
-            </div>
-          </div>
-        )}
+        {/* Hide/show video — a per-viewer preference, not synced to other
+            viewers or the stream's own state. Purely visual: audio keeps
+            playing from the same stream either way. */}
+        <Button
+          onClick={toggleVideoHidden}
+          size="sm"
+          aria-label={videoHidden ? 'Show video' : 'Hide video'}
+          title={videoHidden ? 'Show video' : 'Hide video (audio only)'}
+          className="absolute bottom-4 left-4 z-20 h-9 px-3 gap-1.5 bg-black/70 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md rounded-xl"
+        >
+          {videoHidden ? (
+            <>
+              <VideoIcon className="h-4 w-4" /> Show Video
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-4 w-4" /> Hide Video
+            </>
+          )}
+        </Button>
+
+        {/* Global Volume Control — the creator has no native embed controls
+            reachable (blocked by the overlay below), so they need this too.
+            Always visible (not hover-reveal) since hover doesn't exist on
+            touch devices. */}
+        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 bg-black/70 px-3 py-2 rounded-xl border border-white/10 backdrop-blur-md">
+          <Button
+            onClick={onMuteToggle}
+            size="sm"
+            aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}
+            className="bg-transparent hover:bg-white/10 text-white h-8 w-8 p-0 flex-shrink-0"
+          >
+            {isMuted || volume === 0 ? (
+              <VolumeX className="h-5 w-5 text-red-400" />
+            ) : (
+              <Volume2 className="h-5 w-5 text-blue-400" />
+            )}
+          </Button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={isMuted ? 0 : volume}
+            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+            aria-label="Volume"
+            className="w-20 sm:w-28 cursor-pointer accent-blue-500 h-1.5 bg-white/20 rounded-lg appearance-none"
+          />
+        </div>
 
         <div className="absolute inset-0 z-10 cursor-default" />
 

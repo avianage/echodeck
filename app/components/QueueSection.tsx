@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronUp, PlayCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
@@ -24,18 +24,33 @@ interface QueueSectionProps {
   queue: Video[];
   currentUserId: string | null;
   creatorId: string;
+  canPlayNow?: boolean;
   onVote: (id: string, isUpvote: boolean) => void;
   onRemove: (streamId: string) => void;
+  onPlayNow?: (streamId: string) => void;
 }
 
 export function QueueSection({
   queue,
   currentUserId,
   creatorId,
+  canPlayNow,
   onVote,
   onRemove,
+  onPlayNow,
 }: QueueSectionProps) {
   const [votingIds, setVotingIds] = useState<Set<string>>(new Set());
+  const [playingNowId, setPlayingNowId] = useState<string | null>(null);
+
+  const handlePlayNowClick = async (id: string) => {
+    if (playingNowId) return;
+    setPlayingNowId(id);
+    try {
+      await onPlayNow?.(id);
+    } finally {
+      setPlayingNowId(null);
+    }
+  };
 
   const handleVoteClick = async (id: string, isUpvote: boolean) => {
     if (votingIds.has(id)) return;
@@ -90,6 +105,18 @@ export function QueueSection({
                   <h3 className="font-semibold text-white truncate text-xs">{video.title}</h3>
                 </div>
                 <div className="flex items-center gap-1">
+                  {canPlayNow && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={playingNowId !== null}
+                      onClick={() => handlePlayNowClick(video.id)}
+                      title="Play now"
+                      className="h-8 w-8 p-0 text-gray-500 hover:text-green-500"
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                   {(video.addedById === currentUserId || creatorId === currentUserId) && (
                     <Button
                       variant="ghost"

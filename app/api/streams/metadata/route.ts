@@ -26,11 +26,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
   }
 
-  const body = MetadataSchema.parse(await req.json());
-  const { streamId, creatorId, title, genre, isPublic, clearQueue, mode, slowModeSeconds } = body;
   const userId = session.user.id as string;
 
   try {
+    const body = MetadataSchema.parse(await req.json());
+    const { streamId, creatorId, title, genre, isPublic, clearQueue, mode, slowModeSeconds } = body;
+
     if (streamId) {
       // Existing behaviour: update by streamId (used inside active stream)
       const stream = await prismaClient.stream.findUnique({ where: { id: streamId } });
@@ -146,6 +147,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ message: 'Metadata updated successfully' });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ message: 'Invalid request body', issues: error.issues }, { status: 400 });
+    }
     logger.error({ err: error }, '❌ POST /api/streams/metadata failed:');
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }

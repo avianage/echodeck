@@ -101,7 +101,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: setupTitle,
-          genre: setupGenre || null,
+          genre: setupGenre || undefined,
           isPublic: setupPublic,
           clearQueue: clearQueue,
           mode: setupMode,

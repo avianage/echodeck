@@ -53,36 +53,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
   }
 
+  const requestedStreamId = req.nextUrl.searchParams.get('streamId');
+
   // Check the blocklist against a small batch of leading candidates instead
   // of pulling the entire blockedVideo table into memory on every skip.
   const CANDIDATE_BATCH_SIZE = 20;
   let mostUpvotedStream: Awaited<ReturnType<typeof prismaClient.stream.findFirst>> = null;
-  let skip = 0;
 
-  for (;;) {
-    const candidates = await prismaClient.stream.findMany({
-      where: { userId: creatorId, played: false },
-      orderBy: [{ upvotes: { _count: 'desc' } }, { createdAt: 'asc' }],
-      take: CANDIDATE_BATCH_SIZE,
-      skip,
+  if (requestedStreamId) {
+    // A specific track was requested (e.g. "Play Now" from the queue) —
+    // bypass the upvote/oldest ordering entirely, but still respect the
+    // blocklist and make sure it's actually an unplayed track in this room.
+    const requested = await prismaClient.stream.findFirst({
+      where: { id: requestedStreamId, userId: creatorId, played: false },
     });
+    if (requested) {
+      const blocked = await prismaClient.blockedVideo.findFirst({
+        where: { videoId: requested.extractedId },
+      });
+      if (!blocked) mostUpvotedStream = requested;
+    }
+    if (!mostUpvotedStream) {
+      return NextResponse.json({ message: 'That track is unavailable' }, { status: 404 });
+    }
+  } else {
+    let skip = 0;
+    for (;;) {
+      const candidates = await prismaClient.stream.findMany({
+        where: { userId: creatorId, played: false },
+        orderBy: [{ upvotes: { _count: 'desc' } }, { createdAt: 'asc' }],
+        take: CANDIDATE_BATCH_SIZE,
+        skip,
+      });
 
-    if (candidates.length === 0) break;
+      if (candidates.length === 0) break;
 
-    const blocked = await prismaClient.blockedVideo.findMany({
-      where: { videoId: { in: candidates.map((c) => c.extractedId) } },
-      select: { videoId: true },
-    });
-    const blockedSet = new Set(blocked.map((b) => b.videoId));
+      const blocked = await prismaClient.blockedVideo.findMany({
+        where: { videoId: { in: candidates.map((c) => c.extractedId) } },
+        select: { videoId: true },
+      });
+      const blockedSet = new Set(blocked.map((b) => b.videoId));
 
-    mostUpvotedStream = candidates.find((c) => !blockedSet.has(c.extractedId)) ?? null;
-    if (mostUpvotedStream) break;
-    if (candidates.length < CANDIDATE_BATCH_SIZE) break;
-    skip += CANDIDATE_BATCH_SIZE;
-  }
+      mostUpvotedStream = candidates.find((c) => !blockedSet.has(c.extractedId)) ?? null;
+      if (mostUpvotedStream) break;
+      if (candidates.length < CANDIDATE_BATCH_SIZE) break;
+      skip += CANDIDATE_BATCH_SIZE;
+    }
 
-  if (!mostUpvotedStream) {
-    return NextResponse.json({ message: 'No stream found' }, { status: 404 });
+    if (!mostUpvotedStream) {
+      return NextResponse.json({ message: 'No stream found' }, { status: 404 });
+    }
   }
 
   // Advancing the queue is a read-then-write: pick the top track, then mark it

@@ -42,22 +42,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'URL not allowed' }, { status: 403 });
   }
 
+  // Forward Range so seeking (audio.currentTime, sync-to-position on join/
+  // resume) works — without this, the browser's range requests would be
+  // silently ignored and every seek would re-download from byte 0.
+  const range = req.headers.get('range');
+
   const upstream = await fetch(decoded, {
     headers: {
       referer: 'https://www.youtube.com/',
       'user-agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ...(range ? { range } : {}),
     },
   });
 
   const allowedOrigin = getAllowedOrigin();
 
+  const headers: Record<string, string> = {
+    'Content-Type': upstream.headers.get('Content-Type') || 'audio/mp4',
+    'Accept-Ranges': 'bytes',
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  };
+  const contentLength = upstream.headers.get('Content-Length');
+  const contentRange = upstream.headers.get('Content-Range');
+  if (contentLength) headers['Content-Length'] = contentLength;
+  if (contentRange) headers['Content-Range'] = contentRange;
+
   return new NextResponse(upstream.body, {
-    headers: {
-      'Content-Type': upstream.headers.get('Content-Type') || 'audio/mp4',
-      'Accept-Ranges': 'bytes',
-      'Access-Control-Allow-Origin': allowedOrigin,
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    },
+    status: upstream.status,
+    headers,
   });
 }

@@ -121,6 +121,8 @@ export async function POST(req: NextRequest) {
 
         if (!res) throw new Error('Could not retrieve video details from any source.');
 
+        title = res.title || '';
+
         let thumbnails = res.thumbnail?.thumbnails || res.thumbnails || [];
 
         if (thumbnails.length > 0) {

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Client, GatewayIntentBits, Partials, EmbedBuilder } from 'discord.js';
 import { joinAndPlay, stop, isPlaying } from './voice.js';
 
@@ -93,7 +94,7 @@ async function handleJoin(message, username) {
   }
 
   try {
-    await joinAndPlay(voiceChannel, username);
+    await joinAndPlay(voiceChannel, username, message.channel);
     await message.reply(`🔊 Joined **${voiceChannel.name}** and started playing **${username}**'s queue.`);
   } catch (err) {
     await message.reply(`Couldn't start playback: ${err.message}`);

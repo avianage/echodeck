@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ListMusic, Play, Trash2, Save } from 'lucide-react';
+import { ListMusic, Play, Trash2, Save, ListPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,17 +16,23 @@ interface Playlist {
 }
 
 interface SavedPlaylistsPanelProps {
+  creatorId?: string;
   onLoaded?: () => void;
 }
 
 // "Saved/swappable queues": a creator can save the current live queue as a
 // named playlist, then later load a different saved playlist to replace it.
-// One live queue at a time — this is not concurrent multi-streaming.
-// Scoped to the signed-in user via session on the API side, so no creatorId
-// prop is needed here (only the creator themselves can reach this panel).
-export function SavedPlaylistsPanel({ onLoaded }: SavedPlaylistsPanelProps) {
+// Also supports creating a playlist directly from pasted song names/links —
+// the workaround for Spotify blocking full playlist-track access (see
+// app/lib/playlistResolve.ts's resolveMixedTrackLines).
+// Scoped to the signed-in user's own playlists via session on the API side.
+// creatorId is only used for the "Add to Queue" action, so a moderator
+// managing someone else's room adds to that room's queue, not their own.
+export function SavedPlaylistsPanel({ creatorId, onLoaded }: SavedPlaylistsPanelProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [mode, setMode] = useState<'save-queue' | 'create'>('save-queue');
   const [name, setName] = useState('');
+  const [pasteText, setPasteText] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
     { type: 'load' | 'delete'; id: string } | null
@@ -66,6 +72,35 @@ export function SavedPlaylistsPanel({ onLoaded }: SavedPlaylistsPanelProps) {
     }
   };
 
+  const createFromPaste = async () => {
+    const trimmedName = name.trim();
+    const manualTracks = pasteText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!trimmedName || manualTracks.length === 0) return;
+
+    setBusy(true);
+    try {
+      const res = await fetch('/api/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmedName, manualTracks }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || 'Failed to create playlist');
+        return;
+      }
+      toast.success(`Playlist created with ${data.playlist?._count?.tracks ?? manualTracks.length} tracks`);
+      setName('');
+      setPasteText('');
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadPlaylist = async (id: string) => {
     setBusy(true);
     try {
@@ -76,6 +111,23 @@ export function SavedPlaylistsPanel({ onLoaded }: SavedPlaylistsPanelProps) {
         return;
       }
       toast.success(`Loaded ${data.trackCount} tracks`);
+      onLoaded?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addToQueue = async (id: string) => {
+    setBusy(true);
+    try {
+      const query = creatorId ? `?creatorId=${creatorId}` : '';
+      const res = await fetch(`/api/playlists/${id}/add-to-queue${query}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || 'Failed to add playlist to queue');
+        return;
+      }
+      toast.success(`Added ${data.trackCount} tracks to the queue`);
       onLoaded?.();
     } finally {
       setBusy(false);
@@ -117,22 +169,67 @@ export function SavedPlaylistsPanel({ onLoaded }: SavedPlaylistsPanelProps) {
 
       <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden">
         <CardContent className="p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name this queue..."
-              className="h-10 bg-white/5 border-white/10 rounded-xl"
-            />
-            <Button
-              onClick={saveCurrentQueue}
-              disabled={busy || !name.trim()}
-              size="sm"
-              className="h-10 rounded-xl bg-accent hover:bg-accent/90 flex-shrink-0"
+          <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/5 rounded-xl w-fit">
+            <button
+              onClick={() => setMode('save-queue')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                mode === 'save-queue' ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:text-white'
+              }`}
             >
-              <Save className="w-4 h-4 mr-1" /> Save
-            </Button>
+              Save Current Queue
+            </button>
+            <button
+              onClick={() => setMode('create')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                mode === 'create' ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:text-white'
+              }`}
+            >
+              Create From Songs
+            </button>
           </div>
+
+          {mode === 'save-queue' ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Name this queue..."
+                className="h-10 bg-white/5 border-white/10 rounded-xl"
+              />
+              <Button
+                onClick={saveCurrentQueue}
+                disabled={busy || !name.trim()}
+                size="sm"
+                className="h-10 rounded-xl bg-accent hover:bg-accent/90 flex-shrink-0"
+              >
+                <Save className="w-4 h-4 mr-1" /> Save
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Playlist name..."
+                className="h-10 bg-white/5 border-white/10 rounded-xl"
+              />
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={'One song per line — name, YouTube link, or Spotify track link\nBlinding Lights - The Weeknd\nhttps://open.spotify.com/track/...'}
+                rows={5}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-sm resize-none focus:outline-none focus:border-accent/50"
+              />
+              <Button
+                onClick={createFromPaste}
+                disabled={busy || !name.trim() || !pasteText.trim()}
+                size="sm"
+                className="w-full h-10 rounded-xl bg-accent hover:bg-accent/90"
+              >
+                <Save className="w-4 h-4 mr-1" /> Create Playlist
+              </Button>
+            </div>
+          )}
 
           {playlists.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-4">No saved playlists yet.</p>
@@ -152,7 +249,18 @@ export function SavedPlaylistsPanel({ onLoaded }: SavedPlaylistsPanelProps) {
                       variant="ghost"
                       size="sm"
                       disabled={busy}
+                      onClick={() => addToQueue(p.id)}
+                      title="Add to Queue"
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-emerald-400"
+                    >
+                      <ListPlus className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
                       onClick={() => setConfirmAction({ type: 'load', id: p.id })}
+                      title="Load (replace queue)"
                       className="h-8 w-8 p-0 text-gray-400 hover:text-accent"
                     >
                       <Play className="w-4 h-4" />

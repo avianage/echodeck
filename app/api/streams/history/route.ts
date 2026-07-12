@@ -46,6 +46,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const sortBy = req.nextUrl.searchParams.get('sortBy');
+
+  if (sortBy === 'frequency') {
+    const grouped = await prismaClient.stream.groupBy({
+      by: ['extractedId', 'title'],
+      where: { userId: creatorId, played: true },
+      _count: { extractedId: true },
+      orderBy: { _count: { extractedId: 'desc' } },
+      take: 5,
+    });
+
+    return NextResponse.json({
+      tracks: grouped.map((t) => ({
+        extractedId: t.extractedId,
+        title: t.title,
+        playCount: t._count.extractedId,
+      })),
+      nextCursor: null,
+    });
+  }
+
   const tracks = await prismaClient.stream.findMany({
     where: {
       userId: creatorId,

@@ -6,6 +6,14 @@ import { isRateLimited } from '@/app/lib/rateLimit';
 import type { YouTubeSearchItem } from '@/types/youtube-api';
 import { logger } from '@/lib/logger';
 
+interface SearchCacheEntry {
+  items: unknown[];
+  expiresAt: number;
+}
+
+const SEARCH_CACHE_TTL_MS = parseInt(process.env.SEARCH_CACHE_TTL_MINUTES || '10', 10) * 60 * 1000;
+const searchCache = new Map<string, SearchCacheEntry>();
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -26,7 +34,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ items: [] });
     }
 
-     
+    const cacheKey = query.trim().toLowerCase();
+    const cached = searchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json({ items: cached.items });
+    }
+
+
     logger.info(`🔍 Search API: Searching for "${query}" with Topic prioritization`);
 
     // We try two searches to get a good mix: Topic/Official Audio and the raw query
@@ -64,6 +78,8 @@ export async function GET(req: NextRequest) {
       channelTitle: item.channelTitle,
       duration: item.lengthText || item.duration || item.durationText || '',
     }));
+
+    searchCache.set(cacheKey, { items: finalItems, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
 
     return NextResponse.json({ items: finalItems });
   } catch (e) {

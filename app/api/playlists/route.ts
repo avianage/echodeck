@@ -4,6 +4,7 @@ import { prismaClient } from '@/app/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authOptions } from '@/app/lib/auth';
+import { resolveMixedTrackLines } from '@/app/lib/playlistResolve';
 
 interface SessionUser {
   id?: string;
@@ -11,6 +12,7 @@ interface SessionUser {
 
 const CreatePlaylistSchema = z.object({
   name: z.string().min(1).max(100),
+  manualTracks: z.array(z.string()).max(100).optional(),
 });
 
 export async function GET(_req: NextRequest) {
@@ -43,6 +45,37 @@ export async function POST(req: NextRequest) {
   const parsed = CreatePlaylistSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ message: 'Invalid request' }, { status: 400 });
+  }
+
+  if (parsed.data.manualTracks?.length) {
+    const resolved = await resolveMixedTrackLines(parsed.data.manualTracks);
+    if (resolved.length === 0) {
+      return NextResponse.json(
+        { message: 'None of those tracks could be found' },
+        { status: 400 },
+      );
+    }
+
+    const playlist = await prismaClient.playlist.create({
+      data: {
+        userId,
+        name: parsed.data.name,
+        tracks: {
+          create: resolved.map((t, index) => ({
+            url: t.url,
+            extractedId: t.extractedId,
+            type: t.type,
+            title: t.title,
+            smallImg: t.thumbnail,
+            bigImg: t.thumbnail,
+            order: index,
+          })),
+        },
+      },
+      include: { _count: { select: { tracks: true } } },
+    });
+
+    return NextResponse.json({ playlist }, { status: 201 });
   }
 
   const queuedTracks = await prismaClient.stream.findMany({

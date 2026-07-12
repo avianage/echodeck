@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   ShieldAlert,
   Timer,
+  ListMusic,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
@@ -38,6 +39,7 @@ import { SearchBar } from './SearchBar';
 import { QueueSection } from './QueueSection';
 import { ActivityLog } from './ActivityLog';
 import { PlaylistModal } from './PlaylistModal';
+import { ManualPlaylistPasteModal } from './ManualPlaylistPasteModal';
 import { StreamManagement } from './StreamManagement';
 import { ChatPanel } from './ChatPanel';
 import { RecentlyPlayedPanel } from './RecentlyPlayedPanel';
@@ -128,6 +130,7 @@ export default function StreamView({
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(false);
   const [playNextLoader, setPlayNextLoader] = useState(false);
+  const playNextInFlightRef = useRef(false);
   const [isMuted, setIsMuted] = useState(false);
   const [lastSync, setLastSync] = useState<{ type: 'play' | 'pause'; currentTime: number } | null>(
     null,
@@ -137,10 +140,11 @@ export default function StreamView({
   const [isJoined, setIsJoined] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+  const [isManualPasteModalOpen, setIsManualPasteModalOpen] = useState(false);
+  const [manualPasteInitialMode, setManualPasteInitialMode] = useState<'queue' | 'playlist' | 'saved'>('queue');
   const [playlistVideos, setPlaylistVideos] = useState<any[]>([]);
   const [playlistTitle, setPlaylistTitle] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
   const [activityLogs, setActivityLogs] = useState<
     { type: 'success' | 'error'; message: string; timestamp: number }[]
   >([]);
@@ -163,11 +167,21 @@ export default function StreamView({
   const [isFavorite, setIsFavorite] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [heartbeatFailCount, setHeartbeatFailCount] = useState(0);
-  const [isResolving, setIsResolving] = useState(false);
   const [streamIsPublic, setStreamIsPublic] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [streamTitle, setStreamTitle] = useState('');
   const [streamGenre, setStreamGenre] = useState('');
+  // Draft state for the Session Settings form — kept separate from
+  // streamTitle/streamGenre (the live-displayed values used elsewhere on the
+  // page) so typing doesn't change what's shown until Save actually succeeds.
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftGenre, setDraftGenre] = useState('');
+  useEffect(() => {
+    setDraftTitle(streamTitle);
+  }, [streamTitle]);
+  useEffect(() => {
+    setDraftGenre(streamGenre);
+  }, [streamGenre]);
   const [sessionMode, setSessionMode] = useState<'BROADCAST' | 'JAM'>('BROADCAST');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
@@ -209,10 +223,18 @@ export default function StreamView({
   const lastSyncPushRef = useRef<number>(0);
   // true while an SSE connection is healthy — disables the fallback poll
   const sseActiveRef = useRef(false);
+  const pendingUnmountDeleteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mirrors currentVideo.id without needing currentVideo in refreshStreams'
   // deps — adding it there would recreate the heartbeat interval (which
   // depends on refreshStreams) on every song change.
   const currentVideoIdRef = useRef<string | null>(null);
+  // Per-track "already tried and embed-restricted" video IDs, so the
+  // re-resolve fallback doesn't loop back to the same restricted upload.
+  // Keyed by stream id; reset whenever the current track changes.
+  const triedIdsRef = useRef<{ streamId: string | null; ids: string[] }>({
+    streamId: null,
+    ids: [],
+  });
   useEffect(() => {
     currentVideoIdRef.current = currentVideo?.id ?? null;
   }, [currentVideo]);
@@ -259,6 +281,12 @@ export default function StreamView({
             setStreamIsPublic(json.creator.isPublic);
           }
           setCurrentVideo(null);
+          // title/genre live on the CurrentStream row itself, not on whatever
+          // track happens to be playing — read them here too, otherwise a
+          // freshly created session with an empty queue never shows its title
+          // until a track starts playing and the `else` branch below runs.
+          setStreamTitle(json.activeStream?.title || '');
+          setStreamGenre(json.activeStream?.genre || '');
         } else {
           setStreamIsPublic(json.creator.isPublic);
           setViewerCount(json.activeStream.viewerCount);
@@ -326,7 +354,16 @@ export default function StreamView({
           setIsPlaylistModalOpen(true);
           setVideoLink('');
         } catch {
-          toast.error("Could not load playlist. Make sure it's public.");
+          if (videoLink.match(SPOTIFY_PLAYLIST_REGEX)) {
+            toast.error(
+              "Spotify's API policy changes block full playlist import. Paste songs below to add them now, or save them as a reusable playlist from Saved Playlists.",
+              { autoClose: 8000 },
+            );
+          } else {
+            toast.error("Could not load playlist. Make sure it's public.");
+          }
+          setManualPasteInitialMode('queue');
+          setIsManualPasteModalOpen(true);
         } finally {
           setLoading(false);
         }
@@ -383,6 +420,15 @@ export default function StreamView({
     console.log('🔵 StreamView mounted');
     const isCreator = !pathname.startsWith('/party/');
 
+    // A StrictMode-simulated double-invoke (dev) or Fast Refresh remount
+    // re-runs this effect synchronously right after the cleanup below — if
+    // that happens, cancel the delete this mount proves the page didn't
+    // actually go away.
+    if (pendingUnmountDeleteRef.current) {
+      clearTimeout(pendingUnmountDeleteRef.current);
+      pendingUnmountDeleteRef.current = null;
+    }
+
     const handleUnload = () => {
       if (isCreator) {
         // Use fetch with keepalive for reliability on exit
@@ -396,7 +442,12 @@ export default function StreamView({
       console.log('🔴 StreamView unmounted');
       window.removeEventListener('beforeunload', handleUnload);
       if (isCreator) {
-        fetch('/api/streams/metadata', { method: 'DELETE' });
+        // Deferred so a synchronous StrictMode/Fast-Refresh remount can
+        // cancel it above — a real navigation-away has nothing to cancel
+        // it, so the delete still happens.
+        pendingUnmountDeleteRef.current = setTimeout(() => {
+          fetch('/api/streams/metadata', { method: 'DELETE' });
+        }, 0);
       }
     };
   }, [pathname]);
@@ -588,7 +639,7 @@ export default function StreamView({
     return () => {
       clearInterval(heartbeatInterval);
     };
-  }, [creatorId, pathname, isJoined, playing, currentVideo, refreshStreams, heartbeatFailCount]);
+  }, [creatorId, pathname, isJoined, playing, currentVideo?.id, refreshStreams, heartbeatFailCount]);
 
   //
   // SSE connection for viewers — replaces the 500ms poll when healthy.
@@ -729,15 +780,19 @@ export default function StreamView({
         setPlaying(false);
       }
     }
-  }, [currentVideo, pathname, isJoined]);
+    // currentVideo is a fresh object reference on every refreshStreams/
+    // heartbeat poll even when the video hasn't changed (see the earlier
+    // fix on the heartbeat effect's dependency array for the same root
+    // cause) — depending on the whole object here re-ran this on every
+    // poll and force-resumed playback a couple seconds after any pause.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVideo?.id, pathname, isJoined]);
 
   useEffect(() => {
     if (!currentVideo?.extractedId) return;
 
     // Reset ready state on video change
     setIsPlayerReady(false);
-    setResolvedUrl(null);
-    setIsResolving(false);
 
     // Force-enable GO LIVE after 5s if onReady never fires
     const fallbackTimer = setTimeout(() => {
@@ -816,6 +871,53 @@ export default function StreamView({
       console.log(`🚫 Video ${videoId} blacklisted.`);
     } catch (err) {
       console.error('Failed to block video:', err);
+    }
+  };
+
+  const MAX_RERESOLVE_ATTEMPTS = 3;
+
+  // Called when the current track's yt-dlp-extracted audio fails to resolve
+  // or play (deleted/private/region-locked/age-restricted upload, or a
+  // transient extraction failure). Rather than immediately blacklisting the
+  // song's video ID and skipping, try re-resolving to a different upload of
+  // the same title first — often another upload of the same song plays fine.
+  // Only falls back to blacklist+skip once alternates are exhausted or the
+  // retry cap is hit.
+  const handlePlaybackFailure = async (video: Video) => {
+    if (triedIdsRef.current.streamId !== video.id) {
+      triedIdsRef.current = { streamId: video.id, ids: [] };
+    }
+    triedIdsRef.current.ids.push(video.extractedId);
+
+    if (triedIdsRef.current.ids.length > MAX_RERESOLVE_ATTEMPTS) {
+      toast.error('Could not play this track. Skipping...');
+      blockVideo(video.extractedId);
+      playNext();
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/streams/${video.id}/reresolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excludeIds: triedIdsRef.current.ids }),
+      });
+
+      if (!res.ok) {
+        toast.error('Could not play this track. Skipping...');
+        blockVideo(video.extractedId);
+        playNext();
+        return;
+      }
+
+      const { stream } = await res.json();
+      toast.info('That upload failed to play — trying an alternate version...');
+      setCurrentVideo((prev) => (prev && prev.id === stream.id ? { ...prev, ...stream } : prev));
+    } catch (err) {
+      console.error('Re-resolve failed:', err);
+      toast.error('Could not play this track. Skipping...');
+      blockVideo(video.extractedId);
+      playNext();
     }
   };
 
@@ -905,9 +1007,11 @@ export default function StreamView({
         addLog('error', `Network Error: ${video.title}`);
       }
 
-      // Periodically refresh the queue to show progress
+      // Periodically refresh the queue to show progress. Unconditional (not
+      // refreshIfStale) so the visible queue can't lag behind what actually
+      // landed/failed server-side during this sequential bulk add.
       if ((i + 1) % 5 === 0 || i === total - 1) {
-        refreshIfStale();
+        await refreshStreams();
       }
     }
 
@@ -975,17 +1079,20 @@ export default function StreamView({
     }
   };
 
-  const playNext = async () => {
+  const playNext = async (streamId?: string) => {
+    if (playNextInFlightRef.current) return;
+    playNextInFlightRef.current = true;
     try {
       setPlayNextLoader(true);
-      const response = await fetch(
-        `/api/streams/next?creatorId=${encodeURIComponent(creatorId)}`,
-        { method: 'GET' },
-      );
+      const params = new URLSearchParams({ creatorId });
+      if (streamId) params.set('streamId', streamId);
+      const response = await fetch(`/api/streams/next?${params.toString()}`, { method: 'GET' });
 
       if (!response.ok) {
         const errMsg = await response.json();
         console.log('Fetch failed:', errMsg.message);
+        toast.error(errMsg.message || 'Failed to skip');
+        if (response.status === 409) refreshStreams();
         return;
       }
 
@@ -993,6 +1100,7 @@ export default function StreamView({
 
       if (!json.stream) {
         console.warn('No stream received');
+        toast.error('Queue is empty — nothing to skip to');
         return;
       }
 
@@ -1003,8 +1111,10 @@ export default function StreamView({
       toast.info(`Now playing: ${json.stream.title}`);
     } catch (e) {
       console.error('Error: ', e);
+      toast.error('Failed to skip');
     } finally {
       setPlayNextLoader(false);
+      playNextInFlightRef.current = false;
     }
   };
 
@@ -1033,6 +1143,26 @@ export default function StreamView({
     } catch (error) {
       console.error('Error stopping queue:', error);
       toast.error('Failed to stop queue');
+    }
+  };
+
+  const endStream = async () => {
+    try {
+      const response = await fetch('/api/streams/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to end stream');
+      }
+
+      toast.success(sessionMode === 'JAM' ? 'Jam ended!' : 'Stream ended!');
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Error ending stream:', error);
+      toast.error('Failed to end stream');
     }
   };
 
@@ -1162,20 +1292,21 @@ export default function StreamView({
   };
 
   const handleSaveMetadata = async () => {
-    if (!currentVideo) return;
     setIsSavingMetadata(true);
     try {
       const res = await fetch('/api/streams/metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          streamId: currentVideo.id,
-          title: streamTitle,
-          genre: streamGenre,
+          ...(currentVideo ? { streamId: currentVideo.id } : { creatorId }),
+          title: draftTitle,
+          genre: draftGenre,
         }),
       });
       if (res.ok) {
         toast.success('Stream settings updated!');
+        setStreamTitle(draftTitle);
+        setStreamGenre(draftGenre);
         refreshStreams();
       } else {
         toast.error('Failed to update stream settings');
@@ -1186,6 +1317,11 @@ export default function StreamView({
       setIsSavingMetadata(false);
     }
   };
+
+  const isPartyViewer = pathname.startsWith('/party/');
+  const isJamMember =
+    isPartyViewer && sessionMode === 'JAM' && streamRole !== 'BANNED' && streamRole !== 'GUEST';
+  const canControlPlayback = !isPartyViewer || isJamMember;
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-950 px-3 sm:px-6 md:px-12 lg:px-20 pt-4 md:pt-6 pb-safe text-white overflow-x-hidden">
@@ -1353,21 +1489,13 @@ export default function StreamView({
                       isPaused={isPaused}
                       isJoined={isJoined}
                       isPlayerReady={isPlayerReady}
-                      resolvedUrl={resolvedUrl}
                       pathname={pathname}
-                      creatorId={creatorId}
                       currentUserId={currentUserId}
                       accessStatus={accessStatus}
-                      canControlPlayback={
-                        pathname.startsWith('/party/') &&
-                        sessionMode === 'JAM' &&
-                        streamRole !== 'BANNED' &&
-                        streamRole !== 'GUEST'
-                      }
                       volume={volume}
                       playerRef={playerRef}
-                      onReady={(player) => {
-                        console.log('✅ YouTube Player Ready');
+                      onReady={() => {
+                        console.log('✅ Audio Stream Player Ready');
                         setIsPlayerReady(true);
                       }}
                       onPlay={() => {
@@ -1415,31 +1543,12 @@ export default function StreamView({
                       onError={(err) => {
                         if (!currentVideo) return;
                         console.warn(
-                          '⚠️ YouTube Player error:',
+                          '⚠️ Audio stream error:',
                           err,
                           'for ID:',
                           currentVideo.extractedId,
                         );
-
-                        const isEmbedRestricted = err === 101 || err === 150;
-                        const isInvalidVideo = err === 2 || err === 100;
-
-                        if (isInvalidVideo) {
-                          toast.error('Video unavailable. Skipping...');
-                          playNext();
-                          return;
-                        }
-
-                        if (isEmbedRestricted) {
-                          toast.error('Embed restricted for this video. Skipping...');
-                          blockVideo(currentVideo.extractedId);
-                          playNext();
-                          return;
-                        }
-
-                        console.error('Unknown player error:', err);
-                        toast.error('Playback error. Skipping...');
-                        playNext();
+                        handlePlaybackFailure(currentVideo);
                       }}
                       onGoLive={handleGoLive}
                       onMuteToggle={() => setIsMuted(!isMuted)}
@@ -1471,9 +1580,6 @@ export default function StreamView({
               </Card>
 
               {(() => {
-                const isPartyViewer = pathname.startsWith('/party/');
-                const isJamMember = isPartyViewer && sessionMode === 'JAM' && streamRole !== 'BANNED' && streamRole !== 'GUEST';
-                const canControlPlayback = !isPartyViewer || isJamMember;
                 const canClearQueue = !isPartyViewer;
                 return (
                 canControlPlayback && (
@@ -1486,6 +1592,7 @@ export default function StreamView({
                   {currentVideo && (
                     <Button
                       onClick={() => {
+                        if (!playerRef.current) return;
                         if (playing) {
                           playerRef.current.pauseVideo();
                           setPlaying(false);
@@ -1510,7 +1617,8 @@ export default function StreamView({
                           }).catch(console.error);
                         }
                       }}
-                      className="w-full sm:flex-1 h-11 sm:h-12 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl"
+                      disabled={!isPlayerReady}
+                      className="w-full sm:flex-1 h-11 sm:h-12 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {playing ? (
                         <Pause className="mr-2 h-5 w-5 fill-current" />
@@ -1522,7 +1630,7 @@ export default function StreamView({
                   )}
                   <Button
                     disabled={playNextLoader || (!currentVideo && queue.length === 0)}
-                    onClick={playNext}
+                    onClick={() => playNext()}
                     className={`w-full sm:flex-1 h-11 sm:h-12 text-white font-bold rounded-xl transition-all ${
                       currentVideo
                         ? 'bg-amber-600 hover:bg-amber-700'
@@ -1541,6 +1649,15 @@ export default function StreamView({
                       Stop Queue
                     </Button>
                   )}
+                  {canClearQueue && (
+                    <Button
+                      onClick={endStream}
+                      variant="destructive"
+                      className="w-full sm:flex-1 h-11 sm:h-12 font-bold rounded-xl"
+                    >
+                      {sessionMode === 'JAM' ? 'End Jam' : 'End Stream'}
+                    </Button>
+                  )}
                 </div>
                 )
                 );
@@ -1549,7 +1666,20 @@ export default function StreamView({
 
             <div className="lg:col-span-1 space-y-8">
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-white">Add to Queue</h2>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-2xl font-bold text-white">Add to Queue</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setManualPasteInitialMode('saved');
+                      setIsManualPasteModalOpen(true);
+                    }}
+                    className="h-9 rounded-xl border-white/10 text-gray-300 hover:text-white"
+                  >
+                    <ListMusic className="w-4 h-4 mr-1.5" /> Add from Playlist
+                  </Button>
+                </div>
                 <SearchBar
                   videoLink={videoLink}
                   searchResults={searchResults}
@@ -1608,8 +1738,10 @@ export default function StreamView({
                 queue={queue}
                 currentUserId={currentUserId}
                 creatorId={creatorId}
+                canPlayNow={canControlPlayback}
                 onVote={handleVote}
                 onRemove={handleRemove}
+                onPlayNow={(id) => playNext(id)}
               />
 
               <ChatPanel
@@ -1622,7 +1754,7 @@ export default function StreamView({
                 }
               />
 
-              <RecentlyPlayedPanel creatorId={creatorId} />
+              <RecentlyPlayedPanel creatorId={creatorId} onAdded={refreshStreams} />
             </div>
           </div>
 
@@ -1657,8 +1789,8 @@ export default function StreamView({
                             Stream Title
                           </label>
                           <Input
-                            value={streamTitle}
-                            onChange={(e) => setStreamTitle(e.target.value)}
+                            value={draftTitle}
+                            onChange={(e) => setDraftTitle(e.target.value)}
                             placeholder="Enter a catchy title..."
                             className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
                           />
@@ -1668,15 +1800,15 @@ export default function StreamView({
                             Genre (Optional)
                           </label>
                           <Input
-                            value={streamGenre}
-                            onChange={(e) => setStreamGenre(e.target.value)}
+                            value={draftGenre}
+                            onChange={(e) => setDraftGenre(e.target.value)}
                             placeholder="e.g. Chill, Lofi, Gaming"
                             className="h-12 bg-white/5 border-white/10 rounded-2xl focus:ring-accent/30"
                           />
                         </div>
                         <Button
                           onClick={handleSaveMetadata}
-                          disabled={isSavingMetadata || !currentVideo}
+                          disabled={isSavingMetadata}
                           className="w-full h-12 rounded-2xl bg-accent hover:bg-accent/90 text-white font-black uppercase tracking-widest gap-2 shadow-lg shadow-accent/20"
                         >
                           {isSavingMetadata ? (
@@ -1702,7 +1834,7 @@ export default function StreamView({
 
               {(currentUserId === creatorId || streamRole === 'OWNER') && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mt-8">
-                  <SavedPlaylistsPanel onLoaded={refreshStreams} />
+                  <SavedPlaylistsPanel creatorId={creatorId} onLoaded={refreshStreams} />
                   <CreatorStatsPanel creatorId={creatorId} />
                 </div>
               )}
@@ -1725,6 +1857,19 @@ export default function StreamView({
         onClose={() => setIsPlaylistModalOpen(false)}
         onAddOne={handleAddFromPlaylist}
         onAddAll={handleAddAllFromPlaylist}
+      />
+      <ManualPlaylistPasteModal
+        isOpen={isManualPasteModalOpen}
+        creatorId={creatorId}
+        initialMode={manualPasteInitialMode}
+        onClose={() => setIsManualPasteModalOpen(false)}
+        onResolved={(result) => {
+          setPlaylistVideos(result.videos as typeof playlistVideos);
+          setPlaylistTitle(result.title);
+          setIsManualPasteModalOpen(false);
+          setIsPlaylistModalOpen(true);
+        }}
+        onAdded={refreshStreams}
       />
       <InviteFriendsModal
         isOpen={isInviteModalOpen}

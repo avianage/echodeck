@@ -51,6 +51,8 @@ function spawnFfmpegAudio(sourceUrl) {
   ], { stdio: ['ignore', 'pipe', 'ignore'] });
 }
 
+const MAX_CONSECUTIVE_FAILURES = 5;
+
 async function playNext(session) {
   const track = session.queue[session.cursor];
   if (!track) {
@@ -70,15 +72,76 @@ async function playNext(session) {
     return;
   }
 
-  const audioUrl = await resolveAudioUrl(videoId);
-  const ffmpeg = spawnFfmpegAudio(audioUrl);
+  let audioUrl;
+  let ffmpeg;
+  try {
+    audioUrl = await resolveAudioUrl(videoId);
+    ffmpeg = spawnFfmpegAudio(audioUrl);
+  } catch (err) {
+    console.error(
+      `Failed to resolve/spawn track "${current.title || 'Untitled'}" (videoId: ${videoId}):`,
+      err,
+    );
+
+    session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
+    if (session.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      await session.textChannel
+        ?.send('❌ Too many unplayable tracks, stopping.')
+        .catch((e) => console.error('Failed to send stop message:', e));
+      return;
+    }
+
+    await session.textChannel
+      ?.send(`⚠️ Skipping unavailable track: ${current.title || 'Untitled'}`)
+      .catch((e) => console.error('Failed to send skip message:', e));
+
+    await playNext(session).catch((e) => console.error('Voice playback error:', e));
+    return;
+  }
+
+  // Attached synchronously, right after spawn() returns and before ffmpeg is
+  // used anywhere else. spawn() does not throw for a bad binary/runtime
+  // failure (e.g. ENOENT) — that surfaces asynchronously as an 'error' event
+  // on the ChildProcess, and an unhandled 'error' event on a ChildProcess is
+  // fatal to the whole Node process by default. This covers ANY ffmpeg
+  // failure (missing binary, corrupt stream, permission error), not just the
+  // resolve failures the try/catch above already handles.
+  ffmpeg.on('error', (err) => {
+    console.error(`ffmpeg spawn/runtime error for videoId ${videoId}:`, err);
+
+    // Guards against a double-skip: @discordjs/voice's AudioPlayer listens
+    // for errors on the resource's underlying stream (ffmpeg.stdout here)
+    // and can independently emit its own 'error' (or transition to Idle) for
+    // the exact same dead process this handler is reacting to — without
+    // this flag, both this handler and the player's own Idle/error
+    // listeners below could each call playNext for the same failure.
+    if (session.advancing) return;
+    session.advancing = true;
+
+    session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
+    session.textChannel?.send(`⚠️ Playback error, skipping: ${current.title || 'Untitled'}`);
+
+    if (session.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      session.textChannel?.send('❌ Too many unplayable tracks, stopping.');
+      session.advancing = false;
+      return;
+    }
+
+    playNext(session)
+      .catch((e) => console.error('Voice playback error:', e))
+      .finally(() => {
+        session.advancing = false;
+      });
+  });
+
+  session.consecutiveFailures = 0;
   session.ffmpeg = ffmpeg;
 
-  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
+  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Opus });
   session.player.play(resource);
 }
 
-export async function joinAndPlay(voiceChannel, username) {
+export async function joinAndPlay(voiceChannel, username, textChannel) {
   const guildId = voiceChannel.guild.id;
 
   const existing = sessions.get(guildId);
@@ -102,15 +165,40 @@ export async function joinAndPlay(voiceChannel, username) {
   const player = createAudioPlayer();
   connection.subscribe(player);
 
-  const session = { username, connection, player, queue, cursor: 0, ffmpeg: null };
+  const session = {
+    username,
+    connection,
+    player,
+    queue,
+    cursor: 0,
+    ffmpeg: null,
+    textChannel,
+    consecutiveFailures: 0,
+    advancing: false,
+  };
   sessions.set(guildId, session);
 
+  // Guarded by session.advancing — see the comment on the ffmpeg 'error'
+  // listener inside playNext for why: these can otherwise double-fire
+  // alongside that handler for the same dead resource.
   player.on(AudioPlayerStatus.Idle, () => {
-    playNext(session).catch((err) => console.error('Voice playback error:', err));
+    if (session.advancing) return;
+    session.advancing = true;
+    playNext(session)
+      .catch((err) => console.error('Voice playback error:', err))
+      .finally(() => {
+        session.advancing = false;
+      });
   });
   player.on('error', (err) => {
     console.error('Audio player error:', err);
-    playNext(session).catch((e) => console.error('Voice playback error:', e));
+    if (session.advancing) return;
+    session.advancing = true;
+    playNext(session)
+      .catch((e) => console.error('Voice playback error:', e))
+      .finally(() => {
+        session.advancing = false;
+      });
   });
 
   await playNext(session);
