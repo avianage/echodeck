@@ -115,10 +115,9 @@ async function playNext(session) {
 
   const videoId = extractVideoId(current.url);
   if (!videoId) {
-    await playNext(session).catch((e) => {
-      console.error('Voice playback error:', e);
-      session.advancing = false;
-    });
+    await playNext(session)
+      .catch((e) => { console.error('Voice playback error:', e); })
+      .finally(() => { session.advancing = false; });
     return;
   }
 
@@ -146,10 +145,9 @@ async function playNext(session) {
       ?.send(`⚠️ Skipping unavailable track: ${current.title || 'Untitled'}`)
       .catch((e) => console.error('Failed to send skip message:', e));
 
-    await playNext(session).catch((e) => {
-      console.error('Voice playback error:', e);
-      session.advancing = false;
-    });
+    await playNext(session)
+      .catch((e) => { console.error('Voice playback error:', e); })
+      .finally(() => { session.advancing = false; });
     return;
   }
 
@@ -180,10 +178,9 @@ async function playNext(session) {
       return;
     }
 
-    playNext(session).catch((e) => {
-      console.error('Voice playback error:', e);
-      session.advancing = false;
-    });
+    playNext(session)
+      .catch((e) => { console.error('Voice playback error:', e); })
+      .finally(() => { session.advancing = false; });
   });
 
   ffmpeg.on('close', (code) => {
@@ -244,46 +241,23 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
   };
   sessions.set(guildId, session);
 
-  connection.on(VoiceConnectionStatus.Disconnected, async () => {
-    try {
-      await Promise.race([
-        entersState(connection, VoiceConnectionStatus.Signalling, 30_000),
-        entersState(connection, VoiceConnectionStatus.Connecting, 30_000),
-      ]);
-    } catch {
-      const s = sessions.get(guildId);
-      s?.textChannel?.send('⚠️ Lost voice connection — stopping session.').catch(() => {});
-      stop(guildId);
-    }
-  });
-
-  // Guarded by session.advancing — see the comment on the ffmpeg 'error'
-  // listener inside playNext for why: these can otherwise double-fire
-  // alongside that handler for the same dead resource.
   player.on(AudioPlayerStatus.Idle, () => {
     if (session.advancing || session.stopped) return;
     session.advancing = true;
-    playNext(session).catch((err) => {
-      console.error('Voice playback error:', err);
-      session.advancing = false;
-    });
+    playNext(session)
+      .catch((err) => { console.error('Voice playback error:', err); })
+      .finally(() => { session.advancing = false; });
   });
   player.on('error', (err) => {
     console.error('Audio player error:', err);
     if (session.advancing || session.stopped) return;
     session.advancing = true;
-    playNext(session).catch((e) => {
-      console.error('Voice playback error:', e);
-      session.advancing = false;
-    });
+    playNext(session)
+      .catch((e) => { console.error('Voice playback error:', e); })
+      .finally(() => { session.advancing = false; });
   });
-  // advancing is reset here rather than in .finally() so it stays true until
-  // the player is confirmed in Playing state — prevents stale Idle events
-  // (from player.stop() in skip() or a dying ffmpeg process) from firing
-  // another playNext while the new track is still loading.
   player.on(AudioPlayerStatus.Playing, () => {
     session.consecutiveFailures = 0;
-    session.advancing = false;
   });
 
   await playNext(session);
@@ -356,10 +330,9 @@ export function skip(guildId, n = 1) {
   session.ffmpeg?.kill('SIGKILL');
   session.player.stop(); // Idle listener is blocked by advancing=true
 
-  playNext(session).catch((e) => {
-    console.error('Skip error:', e);
-    session.advancing = false;
-  });
+  playNext(session)
+    .catch((e) => { console.error('Skip error:', e); })
+    .finally(() => { session.advancing = false; });
 
   return true;
 }
@@ -379,10 +352,9 @@ export function appendToQueue(guildId, tracks) {
     session.cursor < session.queue.length
   ) {
     session.advancing = true;
-    playNext(session).catch((e) => {
-      console.error('appendToQueue auto-resume error:', e);
-      session.advancing = false;
-    });
+    playNext(session)
+      .catch((e) => { console.error('appendToQueue auto-resume error:', e); })
+      .finally(() => { session.advancing = false; });
   }
   return true;
 }
