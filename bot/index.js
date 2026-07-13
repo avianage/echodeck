@@ -9,6 +9,8 @@ import {
   cancelEmptyChannelGrace,
   skip,
   appendToQueue,
+  insertNext,
+  forceDisconnect,
   getSessionQueue,
   getCurrentTrack,
   bump,
@@ -162,13 +164,14 @@ async function handleJoin(message, username) {
 
 async function handleLeave(message) {
   const guildId = message.guild?.id;
-  if (!guildId || !isPlaying(guildId)) {
-    await message.reply("I'm not currently playing anything here.");
-    return;
-  }
+  if (!guildId) return;
   const wasBot = isBotOwnedSession(guildId);
-  stop(guildId);
-  await message.reply(wasBot ? '👋 Left the voice channel and ended the bot session.' : '👋 Left the voice channel.');
+  const disconnected = forceDisconnect(guildId);
+  await message.reply(
+    disconnected
+      ? (wasBot ? '👋 Left the voice channel and ended the bot session.' : '👋 Left the voice channel.')
+      : "I'm not in a voice channel here.",
+  );
 }
 
 async function handleSkip(message, n = 1) {
@@ -204,6 +207,22 @@ async function handlePause(message, guildId) {
     await message.reply('▶️ Resumed.');
   } else {
     await message.reply('Nothing to pause or resume right now.');
+  }
+}
+
+async function handleResume(message, guildId) {
+  if (!guildId || !isPlaying(guildId)) {
+    await message.reply("I'm not currently playing anything here.");
+    return;
+  }
+  if (!isBotOwnedSession(guildId)) {
+    await message.reply("Can't resume a human-created stream.");
+    return;
+  }
+  if (resume(guildId)) {
+    await message.reply('▶️ Resumed.');
+  } else {
+    await message.reply("Nothing paused right now.");
   }
 }
 
@@ -386,6 +405,87 @@ async function handlePlay(message, query) {
   await thinking.edit({ content: '', embeds: [nowPlayingEmbed] });
 }
 
+// Fetch a single track and jump it to the front of the queue (plays right
+// after the current track). If no bot session is active, this just starts one.
+async function handlePlayNext(message, query) {
+  const guildId = message.guild?.id;
+  if (!guildId) return;
+
+  const voiceChannel = message.member?.voice?.channel;
+  if (!voiceChannel) {
+    await message.reply('Join a voice channel first, then run this command.');
+    return;
+  }
+
+  if (YT_PLAYLIST_RE.test(query) || SPOTIFY_PLAYLIST_RE.test(query)) {
+    await message.reply(`\`${COMMAND_PREFIX}playnext\` only supports a single track, not a playlist.`);
+    return;
+  }
+
+  const sessionActive = isPlaying(guildId);
+
+  if (sessionActive && !isBotOwnedSession(guildId)) {
+    await message.reply(`Already playing a human-created stream. Use \`${COMMAND_PREFIX}leave\` first.`);
+    return;
+  }
+
+  if (sessionActive) {
+    const queued = getSessionQueue(guildId)?.length ?? 0;
+    if (queued >= MAX_BOT_QUEUE) {
+      await message.reply(`❌ Queue is full (${MAX_BOT_QUEUE} songs max). Wait for some tracks to finish first.`);
+      return;
+    }
+  }
+
+  const thinking = await message.reply('🔎 Finding track…');
+
+  let stream, botUsername;
+  try {
+    const res = await fetch(`${API_BASE}/api/bot/streams`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-bot-secret': BOT_INTERNAL_SECRET },
+      body: JSON.stringify({ query }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      await thinking.edit(`❌ ${body.message || 'Could not find track.'}`);
+      return;
+    }
+    ({ stream, botUsername } = body);
+  } catch (err) {
+    console.error('!playnext POST error:', err);
+    await thinking.edit('❌ Could not reach EchoDeck. Try again in a moment.');
+    return;
+  }
+
+  if (sessionActive) {
+    insertNext(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg }]);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('⏭️ Playing next')
+      .setDescription(stream.title || 'Untitled')
+      .setThumbnail(stream.smallImg || null);
+    await thinking.edit({ content: '', embeds: [embed] });
+    return;
+  }
+
+  // No session — start one.
+  try {
+    await joinAndPlay(voiceChannel, botUsername, message.channel, { isBotOwned: true });
+  } catch (err) {
+    await thinking.edit(`❌ Couldn't start playback: ${err.message}`);
+    return;
+  }
+
+  const nowPlayingEmbed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('🎵 Now Playing')
+    .setDescription(stream.title || 'Untitled')
+    .setThumbnail(stream.smallImg || null)
+    .setFooter({ text: `Playing in ${voiceChannel.name} · ${COMMAND_PREFIX}leave to stop` });
+  await thinking.edit({ content: '', embeds: [nowPlayingEmbed] });
+}
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content.startsWith(COMMAND_PREFIX)) return;
 
@@ -431,6 +531,21 @@ client.on('messageCreate', async (message) => {
         }
         await handlePlay(message, argText);
         break;
+      case 'playnext': {
+        if (!argText) {
+          return void (await message.reply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0xed4245)
+                .setDescription(
+                  `Usage: \`${COMMAND_PREFIX}playnext <song name or YouTube URL>\` — inserts the track to play right after the current one.`,
+                ),
+            ],
+          }));
+        }
+        await handlePlayNext(message, argText);
+        break;
+      }
       case 'skip': {
         const skipN = argText ? parseInt(argText, 10) : 1;
         const skipCount = !isNaN(skipN) && skipN >= 1 ? skipN : 1;
@@ -439,6 +554,11 @@ client.on('messageCreate', async (message) => {
       }
       case 'pause':
         await handlePause(message, guildId);
+        break;
+      case 'resume':
+      case 'unpause':
+      case 'continue':
+        await handleResume(message, guildId);
         break;
       case 'bump': {
         const n = parseInt(argText, 10);
@@ -468,7 +588,9 @@ client.on('messageCreate', async (message) => {
               `\`${COMMAND_PREFIX}play <song / URL / playlist>\` — play or queue a track or playlist`,
               `\`${COMMAND_PREFIX}skip [N]\` — skip 1 or N tracks ahead`,
               `\`${COMMAND_PREFIX}pause\` — pause or resume playback`,
+              `\`${COMMAND_PREFIX}resume\` — resume paused playback (aliases: \`unpause\`, \`continue\`)`,
               `\`${COMMAND_PREFIX}bump <N>\` — move queue position N to play next (N ≥ 2)`,
+              `\`${COMMAND_PREFIX}playnext <song / URL>\` — insert a track to play right after the current one`,
               `\`${COMMAND_PREFIX}queue\` — show upcoming tracks in the bot session`,
               `\`${COMMAND_PREFIX}queue <username>\` — show a user's EchoDeck web queue`,
               `\`${COMMAND_PREFIX}nowplaying\` — what's playing in this session`,

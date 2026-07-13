@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { EmbedBuilder } from 'discord.js';
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -7,6 +8,7 @@ import {
   AudioPlayerStatus,
   VoiceConnectionStatus,
   entersState,
+  getVoiceConnection,
 } from '@discordjs/voice';
 
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
@@ -193,6 +195,27 @@ async function playNext(session) {
 
   const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
   session.player.play(resource);
+
+  announceNowPlaying(session, current);
+}
+
+// Sent on every track transition: current track plus the next up to 5
+// upcoming tracks, mirroring !nowplaying + !queue.
+function announceNowPlaying(session, current) {
+  if (!session.textChannel) return;
+  const upcoming = session.queue.slice(session.cursor, session.cursor + 5);
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('🎵 Now Playing')
+    .setDescription(current.title || 'Untitled')
+    .setThumbnail(current.thumbnail || null);
+  if (upcoming.length) {
+    embed.addFields({
+      name: 'Up Next',
+      value: upcoming.map((t, i) => `${i + 1}. ${t.title || 'Untitled'}`).join('\n'),
+    });
+  }
+  session.textChannel.send({ embeds: [embed] }).catch(() => {});
 }
 
 export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOwned = false, initialQueue = null } = {}) {
@@ -200,7 +223,51 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
 
   const existing = sessions.get(guildId);
   if (existing) {
-    stop(guildId);
+    // Reusing the existing, already-ready connection avoids a destroy/rejoin
+    // race on the same guild's voice gateway (which surfaced as a false
+    // "AbortError: The operation was aborted" from entersState below, even
+    // though playback was still audible).
+    const reusable =
+      existing.connection.joinConfig.channelId === voiceChannel.id &&
+      existing.connection.state.status === VoiceConnectionStatus.Ready;
+
+    if (reusable) {
+      existing.stopped = true;
+      existing.player.stop();
+      existing.ffmpeg?.kill('SIGKILL');
+      if (existing.emptyChannelTimer) {
+        clearTimeout(existing.emptyChannelTimer);
+        existing.emptyChannelTimer = null;
+      }
+      sessions.delete(guildId);
+
+      const queue = initialQueue ?? await fetchQueue(username);
+      if (!queue.length) {
+        throw new Error('Queue is empty — nothing to play');
+      }
+
+      const session = {
+        guildId,
+        username,
+        connection: existing.connection,
+        player: existing.player,
+        queue,
+        cursor: 0,
+        ffmpeg: null,
+        textChannel,
+        consecutiveFailures: 0,
+        advancing: false,
+        stopped: false,
+        isBotOwned,
+        emptyChannelTimer: null,
+      };
+      sessions.set(guildId, session);
+      attachPlayerListeners(session);
+      await playNext(session);
+      return session;
+    }
+
+    await stopAndAwaitTeardown(guildId);
   }
 
   const queue = initialQueue ?? await fetchQueue(username);
@@ -217,8 +284,10 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
   } catch (err) {
-    connection.destroy();
-    throw err;
+    if (connection.state.status !== VoiceConnectionStatus.Ready) {
+      connection.destroy();
+      throw err;
+    }
   }
 
   const player = createAudioPlayer();
@@ -240,7 +309,14 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
     emptyChannelTimer: null,
   };
   sessions.set(guildId, session);
+  attachPlayerListeners(session);
 
+  await playNext(session);
+  return session;
+}
+
+function attachPlayerListeners(session) {
+  const { player } = session;
   player.on(AudioPlayerStatus.Idle, () => {
     if (session.advancing || session.stopped) return;
     session.advancing = true;
@@ -259,9 +335,35 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
   player.on(AudioPlayerStatus.Playing, () => {
     session.consecutiveFailures = 0;
   });
+}
 
-  await playNext(session);
-  return session;
+async function stopAndAwaitTeardown(guildId) {
+  const session = sessions.get(guildId);
+  if (!session) return false;
+
+  if (session.emptyChannelTimer) {
+    clearTimeout(session.emptyChannelTimer);
+    session.emptyChannelTimer = null;
+  }
+
+  session.stopped = true;
+  session.player.stop();
+  session.ffmpeg?.kill('SIGKILL');
+  const { connection } = session;
+  connection.destroy();
+  sessions.delete(guildId);
+
+  try {
+    await entersState(connection, VoiceConnectionStatus.Destroyed, 5_000);
+  } catch {
+    // Best-effort — proceed even if we didn't observe the Destroyed state in time.
+  }
+
+  if (session.isBotOwned) {
+    endBotStream();
+  }
+
+  return true;
 }
 
 export function stop(guildId) {
@@ -359,6 +461,27 @@ export function appendToQueue(guildId, tracks) {
   return true;
 }
 
+// Insert tracks so they play immediately after the current track, ahead of
+// the rest of the queue. tracks: same shape as appendToQueue.
+export function insertNext(guildId, tracks) {
+  const session = sessions.get(guildId);
+  if (!session || !tracks?.length) return false;
+  session.queue.splice(session.cursor, 0, ...tracks);
+  cancelEmptyChannelGrace(guildId);
+  if (
+    !session.advancing &&
+    !session.stopped &&
+    session.player.state.status === AudioPlayerStatus.Idle &&
+    session.cursor < session.queue.length
+  ) {
+    session.advancing = true;
+    playNext(session)
+      .catch((e) => { console.error('insertNext auto-resume error:', e); })
+      .finally(() => { session.advancing = false; });
+  }
+  return true;
+}
+
 // Return the track currently playing (the one before the cursor).
 export function getCurrentTrack(guildId) {
   const session = sessions.get(guildId);
@@ -382,6 +505,16 @@ export function bump(guildId, n) {
   if (target >= session.queue.length) return false;
   const [track] = session.queue.splice(target, 1);
   session.queue.splice(session.cursor, 0, track);
+  return true;
+}
+
+// Disconnect from voice in this guild even if there's no tracked session —
+// covers a stray/orphaned connection (e.g. joined but session state was lost).
+export function forceDisconnect(guildId) {
+  if (stop(guildId)) return true;
+  const connection = getVoiceConnection(guildId);
+  if (!connection) return false;
+  connection.destroy();
   return true;
 }
 
