@@ -1,4 +1,3 @@
-import YouTubeSearchApi from 'youtube-search-api';
 import { z } from 'zod';
 import { getSpotifyApi, getUserSpotifyApi } from '@/app/lib/spotify';
 import type { SpotifyTrack } from '@/types/spotify';
@@ -21,27 +20,71 @@ const SPOTIFY_TRACK_LINK_ANYWHERE =
 const YT_MATCH_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const ytMatchCache = new Map<
   string,
-  { id: string | null; thumbnail: string; expiresAt: number }
+  { id: string | null; title: string; thumbnail: string; expiresAt: number }
 >();
+
+const INNERTUBE_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cookie': 'SOCS=CAE=',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Origin': 'https://www.youtube.com',
+};
+
+const INNERTUBE_CONTEXT = {
+  client: { clientName: 'WEB', clientVersion: '2.20240101', hl: 'en', gl: 'US' },
+};
+
+async function searchYouTubeInnerTube(
+  query: string,
+): Promise<{ id: string; title: string; thumbnail: string } | null> {
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: INNERTUBE_HEADERS,
+      body: JSON.stringify({ context: INNERTUBE_CONTEXT, query }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const contents =
+      data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer
+        ?.contents;
+    if (!Array.isArray(contents)) return null;
+
+    for (const section of contents) {
+      const items = section?.itemSectionRenderer?.contents;
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        const vr = item?.videoRenderer;
+        if (!vr?.videoId) continue;
+        return {
+          id: vr.videoId,
+          title: vr.title?.runs?.[0]?.text ?? '',
+          thumbnail: vr.thumbnail?.thumbnails?.[0]?.url ?? '',
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export async function resolveYouTubeMatch(query: string) {
   const cached = ytMatchCache.get(query);
   if (cached && cached.expiresAt > Date.now()) return cached;
 
-  try {
-    const res = await YouTubeSearchApi.GetListByKeyword(query, false, 5, [{ type: 'video' }]);
-    const items = res?.items || [];
-    const first = items[0];
-    const result = {
-      id: first?.id ?? null,
-      thumbnail: first?.thumbnail?.thumbnails?.[0]?.url ?? '',
-      expiresAt: Date.now() + YT_MATCH_CACHE_TTL_MS,
-    };
-    ytMatchCache.set(query, result);
-    return result;
-  } catch {
-    return { id: null, thumbnail: '', expiresAt: 0 };
-  }
+  const hit = await searchYouTubeInnerTube(query);
+  const result = {
+    id: hit?.id ?? null,
+    title: hit?.title ?? '',
+    thumbnail: hit?.thumbnail ?? '',
+    expiresAt: Date.now() + YT_MATCH_CACHE_TTL_MS,
+  };
+  ytMatchCache.set(query, result);
+  return result;
 }
 
 // Runs async work over `items` with at most `concurrency` in flight at once,
@@ -75,33 +118,22 @@ interface ResolvedMixedTrack {
 }
 
 async function resolveYouTubeLinkLine(videoId: string): Promise<ResolvedMixedTrack | null> {
-  let details;
   try {
-    details = await YouTubeSearchApi.GetVideoDetails(videoId);
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      extractedId: videoId,
+      title: data.title || 'YouTube Video',
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      type: 'Youtube',
+    };
   } catch {
-    // GetVideoDetails is known to throw for some videos (an internal parsing
-    // issue in the youtube-search-api library, same failure mode already
-    // worked around in app/api/streams/route.ts) — searching by the video ID
-    // often returns the same video via a different, working code path.
-    try {
-      const searchFallback = await YouTubeSearchApi.GetListByKeyword(videoId, false, 1, [
-        { type: 'video' },
-      ]);
-      details = searchFallback?.items?.[0];
-    } catch {
-      return null;
-    }
+    return null;
   }
-
-  if (!details) return null;
-  const thumbnails = details.thumbnail?.thumbnails || [];
-  return {
-    extractedId: videoId,
-    title: details.title || 'YouTube Video',
-    thumbnail: thumbnails[0]?.url || '',
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    type: 'Youtube',
-  };
 }
 
 async function resolveSpotifyLinkLine(spotifyId: string): Promise<ResolvedMixedTrack | null> {
@@ -146,7 +178,7 @@ export async function resolveMixedTrackLines(lines: string[]): Promise<ResolvedM
     if (!match.id) return null;
     return {
       extractedId: match.id,
-      title: line,
+      title: match.title || line,
       thumbnail: match.thumbnail,
       url: `https://www.youtube.com/watch?v=${match.id}`,
       type: 'Youtube' as const,
@@ -353,17 +385,8 @@ const InnerTubeBrowseResponseSchema = z.object({
 export async function fetchYouTubePlaylist(playlistId: string) {
   const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Cookie': 'SOCS=CAE=',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Origin': 'https://www.youtube.com',
-    },
-    body: JSON.stringify({
-      context: { client: { clientName: 'WEB', clientVersion: '2.20240101', hl: 'en', gl: 'US' } },
-      browseId: `VL${playlistId}`,
-    }),
+    headers: INNERTUBE_HEADERS,
+    body: JSON.stringify({ context: INNERTUBE_CONTEXT, browseId: `VL${playlistId}` }),
   });
 
   if (!res.ok) throw new Error(`InnerTube browse failed: ${res.status}`);

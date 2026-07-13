@@ -62,7 +62,7 @@ function spawnFfmpegAudio(sourceUrl) {
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-i', sourceUrl,
-    '-f', 'opus',
+    '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
     'pipe:1',
@@ -75,19 +75,40 @@ async function playNext(session) {
   if (session.stopped) return;
   const track = session.queue[session.cursor];
   if (!track) {
-    // Reached the end of the snapshot — refresh from the live queue and
-    // keep going if new tracks showed up, otherwise idle in the channel.
-    session.queue = await fetchQueue(session.username);
-    session.cursor = 0;
-    if (!session.queue.length) return;
+    if (!session.isBotOwned) {
+      // Human-joined session: refresh from the live web queue in case new
+      // songs were added via the web app while the bot was playing.
+      session.queue = await fetchQueue(session.username);
+      session.cursor = 0;
+      if (!session.queue.length) {
+        session.advancing = false;
+        return;
+      }
+    } else {
+      // Bot-owned session: queue is managed entirely via appendToQueue —
+      // never refetch (would replay already-played tracks since DB rows
+      // are never marked played). Signal idle and wait for !play.
+      session.textChannel
+        ?.send('📭 Queue finished. Add more songs with `!play`, or I\'ll leave in 5 minutes.')
+        .catch(() => {});
+      startEmptyChannelGrace(session.guildId);
+      session.advancing = false;
+      return;
+    }
   }
+
+  // Cancel any pending idle/empty-channel timer since we're about to play.
+  cancelEmptyChannelGrace(session.guildId);
 
   const current = session.queue[session.cursor];
   session.cursor += 1;
 
   const videoId = extractVideoId(current.url);
   if (!videoId) {
-    await playNext(session);
+    await playNext(session).catch((e) => {
+      console.error('Voice playback error:', e);
+      session.advancing = false;
+    });
     return;
   }
 
@@ -115,7 +136,10 @@ async function playNext(session) {
       ?.send(`⚠️ Skipping unavailable track: ${current.title || 'Untitled'}`)
       .catch((e) => console.error('Failed to send skip message:', e));
 
-    await playNext(session).catch((e) => console.error('Voice playback error:', e));
+    await playNext(session).catch((e) => {
+      console.error('Voice playback error:', e);
+      session.advancing = false;
+    });
     return;
   }
 
@@ -129,13 +153,12 @@ async function playNext(session) {
   ffmpeg.on('error', (err) => {
     console.error(`ffmpeg spawn/runtime error for videoId ${videoId}:`, err);
 
-    // Guards against a double-skip: @discordjs/voice's AudioPlayer listens
-    // for errors on the resource's underlying stream (ffmpeg.stdout here)
-    // and can independently emit its own 'error' (or transition to Idle) for
-    // the exact same dead process this handler is reacting to — without
-    // this flag, both this handler and the player's own Idle/error
-    // listeners below could each call playNext for the same failure.
-    if (session.advancing || session.stopped) return;
+    // Stale-event guard: after a track ends and the next one starts,
+    // session.ffmpeg is updated to the new process. If the old process later
+    // emits a late error (e.g. OS-level cleanup after SIGKILL), this check
+    // prevents it from triggering a spurious playNext call that would skip
+    // the track currently playing.
+    if (session.advancing || session.stopped || session.ffmpeg !== ffmpeg) return;
     session.advancing = true;
 
     session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
@@ -147,20 +170,19 @@ async function playNext(session) {
       return;
     }
 
-    playNext(session)
-      .catch((e) => console.error('Voice playback error:', e))
-      .finally(() => {
-        session.advancing = false;
-      });
+    playNext(session).catch((e) => {
+      console.error('Voice playback error:', e);
+      session.advancing = false;
+    });
   });
 
   session.ffmpeg = ffmpeg;
 
-  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Opus });
+  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
   session.player.play(resource);
 }
 
-export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOwned = false } = {}) {
+export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOwned = false, initialQueue = null } = {}) {
   const guildId = voiceChannel.guild.id;
 
   const existing = sessions.get(guildId);
@@ -168,7 +190,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
     stop(guildId);
   }
 
-  const queue = await fetchQueue(username);
+  const queue = initialQueue ?? await fetchQueue(username);
   if (!queue.length) {
     throw new Error('Queue is empty — nothing to play');
   }
@@ -179,7 +201,12 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
     adapterCreator: voiceChannel.guild.voiceAdapterCreator,
   });
 
-  await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+  } catch (err) {
+    connection.destroy();
+    throw err;
+  }
 
   const player = createAudioPlayer();
   connection.subscribe(player);
@@ -201,30 +228,46 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
   };
   sessions.set(guildId, session);
 
+  connection.on(VoiceConnectionStatus.Disconnected, async () => {
+    try {
+      await Promise.race([
+        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+      ]);
+    } catch {
+      const s = sessions.get(guildId);
+      s?.textChannel?.send('⚠️ Lost voice connection — stopping session.').catch(() => {});
+      stop(guildId);
+    }
+  });
+
   // Guarded by session.advancing — see the comment on the ffmpeg 'error'
   // listener inside playNext for why: these can otherwise double-fire
   // alongside that handler for the same dead resource.
   player.on(AudioPlayerStatus.Idle, () => {
     if (session.advancing || session.stopped) return;
     session.advancing = true;
-    playNext(session)
-      .catch((err) => console.error('Voice playback error:', err))
-      .finally(() => {
-        session.advancing = false;
-      });
+    playNext(session).catch((err) => {
+      console.error('Voice playback error:', err);
+      session.advancing = false;
+    });
   });
   player.on('error', (err) => {
     console.error('Audio player error:', err);
     if (session.advancing || session.stopped) return;
     session.advancing = true;
-    playNext(session)
-      .catch((e) => console.error('Voice playback error:', e))
-      .finally(() => {
-        session.advancing = false;
-      });
+    playNext(session).catch((e) => {
+      console.error('Voice playback error:', e);
+      session.advancing = false;
+    });
   });
+  // advancing is reset here rather than in .finally() so it stays true until
+  // the player is confirmed in Playing state — prevents stale Idle events
+  // (from player.stop() in skip() or a dying ffmpeg process) from firing
+  // another playNext while the new track is still loading.
   player.on(AudioPlayerStatus.Playing, () => {
     session.consecutiveFailures = 0;
+    session.advancing = false;
   });
 
   await playNext(session);
@@ -284,6 +327,80 @@ export function cancelEmptyChannelGrace(guildId) {
   session.emptyChannelTimer = null;
 }
 
+// Immediately advance n tracks in a bot-owned session (default: skip 1).
+export function skip(guildId, n = 1) {
+  const session = sessions.get(guildId);
+  if (!session || session.stopped || session.advancing) return false;
+
+  if (n > 1) {
+    session.cursor = Math.min(session.cursor + n - 1, session.queue.length);
+  }
+
+  session.advancing = true;
+  session.ffmpeg?.kill('SIGKILL');
+  session.player.stop(); // Idle listener is blocked by advancing=true
+
+  playNext(session).catch((e) => {
+    console.error('Skip error:', e);
+    session.advancing = false;
+  });
+
+  return true;
+}
+
+// Append tracks to the in-memory queue of an active session.
+// tracks: array of { title, url, thumbnail } (same shape fetchQueue returns).
+export function appendToQueue(guildId, tracks) {
+  const session = sessions.get(guildId);
+  if (!session || !tracks?.length) return false;
+  session.queue.push(...tracks);
+  // If the bot was idling (queue empty), cancel the leave countdown.
+  cancelEmptyChannelGrace(guildId);
+  return true;
+}
+
+// Return the track currently playing (the one before the cursor).
+export function getCurrentTrack(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || session.cursor === 0) return null;
+  return session.queue[session.cursor - 1] ?? null;
+}
+
+// Return upcoming tracks (from cursor onwards) for display.
+export function getSessionQueue(guildId) {
+  const session = sessions.get(guildId);
+  if (!session) return null;
+  return session.queue.slice(session.cursor);
+}
+
+// Move the 1-indexed upcoming track at position n to be the very next track.
+// Position 1 = already next (no-op). Position 2 = second upcoming, etc.
+export function bump(guildId, n) {
+  const session = sessions.get(guildId);
+  if (!session || n <= 1) return false;
+  const target = session.cursor + n - 1;
+  if (target >= session.queue.length) return false;
+  const [track] = session.queue.splice(target, 1);
+  session.queue.splice(session.cursor, 0, track);
+  return true;
+}
+
 export function isPlaying(guildId) {
   return sessions.has(guildId);
+}
+
+// Pause the current track. Returns true if successfully paused, false if not
+// playing or already paused.
+export function pause(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || session.stopped) return false;
+  return session.player.pause();
+}
+
+// Resume a paused track. Returns true if successfully resumed, false if not
+// paused.
+export function resume(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || session.stopped) return false;
+  return session.player.unpause();
 }

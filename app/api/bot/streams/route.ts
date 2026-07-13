@@ -73,7 +73,10 @@ export async function POST(req: NextRequest) {
     where: { userId: botUser.id, played: false },
   });
   if (queueLength >= MAX_QUEUE_LENGTH) {
-    return NextResponse.json({ message: 'Queue is at the limit.' }, { status: 400 });
+    return NextResponse.json(
+      { message: `Queue is full (${MAX_QUEUE_LENGTH} songs max).` },
+      { status: 400 },
+    );
   }
 
   // extractedId is always a YouTube video ID (even for Spotify-sourced tracks).
