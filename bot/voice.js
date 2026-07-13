@@ -57,16 +57,26 @@ function extractVideoId(url) {
 }
 
 function spawnFfmpegAudio(sourceUrl) {
-  return spawn('ffmpeg', [
+  const proc = spawn('ffmpeg', [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-i', sourceUrl,
-    '-f', 's16le',
-    '-ar', '48000',
-    '-ac', '2',
+    '-vn',
+    '-c:a', 'libopus',
+    '-b:a', '128k',
+    '-f', 'ogg',
     'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'ignore'] });
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  proc.stderr?.on('data', (chunk) => {
+    const msg = chunk.toString();
+    if (/error|invalid|403|404|fail/i.test(msg)) {
+      console.error('[ffmpeg]', msg.trimEnd());
+    }
+  });
+
+  return proc;
 }
 
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -176,9 +186,15 @@ async function playNext(session) {
     });
   });
 
+  ffmpeg.on('close', (code) => {
+    if (code !== 0 && !session.stopped && session.ffmpeg === ffmpeg) {
+      console.error(`[ffmpeg] exited code ${code} for "${current.title || 'Untitled'}" (${videoId})`);
+    }
+  });
+
   session.ffmpeg = ffmpeg;
 
-  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
+  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
   session.player.play(resource);
 }
 
@@ -231,8 +247,8 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
     try {
       await Promise.race([
-        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+        entersState(connection, VoiceConnectionStatus.Signalling, 30_000),
+        entersState(connection, VoiceConnectionStatus.Connecting, 30_000),
       ]);
     } catch {
       const s = sessions.get(guildId);
@@ -354,8 +370,20 @@ export function appendToQueue(guildId, tracks) {
   const session = sessions.get(guildId);
   if (!session || !tracks?.length) return false;
   session.queue.push(...tracks);
-  // If the bot was idling (queue empty), cancel the leave countdown.
   cancelEmptyChannelGrace(guildId);
+  // If the queue was exhausted and the player is idle, restart playback immediately.
+  if (
+    !session.advancing &&
+    !session.stopped &&
+    session.player.state.status === AudioPlayerStatus.Idle &&
+    session.cursor < session.queue.length
+  ) {
+    session.advancing = true;
+    playNext(session).catch((e) => {
+      console.error('appendToQueue auto-resume error:', e);
+      session.advancing = false;
+    });
+  }
   return true;
 }
 
