@@ -6,6 +6,16 @@ import { logger } from '@/lib/logger';
 // resolves for the same video within that window don't re-invoke yt-dlp.
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_HOURS || '4', 10) * 60 * 60 * 1000;
 
+// Use the URL's own expire= timestamp (minus a 5-min safety buffer) as the
+// cache TTL so we never serve a URL that YouTube has already invalidated.
+function getUrlExpiry(url: string): number {
+  const match = /[?&]expire=(\d+)/.exec(url);
+  if (!match) return Date.now() + CACHE_TTL_MS;
+  const youtubeExpiry = parseInt(match[1], 10) * 1000;
+  const safeExpiry = youtubeExpiry - 5 * 60 * 1000;
+  return Math.min(Date.now() + CACHE_TTL_MS, safeExpiry);
+}
+
 interface CacheEntry {
   url: string;
   expiresAt: number;
@@ -45,6 +55,7 @@ export async function resolveAudioUrl(videoId: string): Promise<string> {
         noWarnings: true,
         noCheckCertificate: true,
         preferFreeFormats: true,
+        noCacheDir: true,
       });
 
       const url = String(stdout).trim().split('\n')[0];
@@ -53,7 +64,7 @@ export async function resolveAudioUrl(videoId: string): Promise<string> {
         throw new Error('Failed to resolve audio URL');
       }
 
-      resolveCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
+      resolveCache.set(videoId, { url, expiresAt: getUrlExpiry(url) });
       return url;
     } finally {
       inflightAudio.delete(videoId);
@@ -85,6 +96,7 @@ export async function resolveVideoUrl(videoId: string): Promise<string> {
         noWarnings: true,
         noCheckCertificate: true,
         preferFreeFormats: true,
+        noCacheDir: true,
       });
 
       const url = String(stdout).trim().split('\n')[0];
@@ -93,7 +105,7 @@ export async function resolveVideoUrl(videoId: string): Promise<string> {
         throw new Error('Failed to resolve video URL');
       }
 
-      resolveVideoCache.set(videoId, { url, expiresAt: Date.now() + CACHE_TTL_MS });
+      resolveVideoCache.set(videoId, { url, expiresAt: getUrlExpiry(url) });
       return url;
     } finally {
       inflightVideo.delete(videoId);

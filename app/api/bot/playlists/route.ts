@@ -131,8 +131,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'No playable tracks found in the playlist.' }, { status: 404 });
   }
 
+  let created: { id: string }[];
   try {
-    await prismaClient.stream.createMany({
+    created = await prismaClient.stream.createManyAndReturn({
       data: resolved.map((t) => ({
         userId: botUser.id,
         addedById: botUser.id,
@@ -143,14 +144,17 @@ export async function POST(req: NextRequest) {
         smallImg: t.thumbnail,
         bigImg: `https://img.youtube.com/vi/${t.extractedId}/maxresdefault.jpg`,
       })),
+      select: { id: true },
     });
   } catch (err) {
     logger.error({ err }, 'Bot playlist bulk insert failed');
     return NextResponse.json({ message: 'Failed to save tracks to queue.' }, { status: 500 });
   }
 
+  const tracksWithIds = resolved.map((t, i) => ({ ...t, streamId: created[i]?.id }));
+
   return NextResponse.json(
-    { tracks: resolved, botUsername: botUser.username, totalFound },
+    { tracks: tracksWithIds, botUsername: botUser.username, totalFound },
     { status: 201 },
   );
 }

@@ -10,6 +10,7 @@ import {
   skip,
   appendToQueue,
   insertNext,
+  clearQueue,
   forceDisconnect,
   getSessionQueue,
   getCurrentTrack,
@@ -22,6 +23,8 @@ const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
 const COMMAND_PREFIX = process.env.BOT_COMMAND_PREFIX || '!';
 const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET;
+
+function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
 
 if (!DISCORD_TOKEN) {
   throw new Error('DISCORD_BOT_TOKEN environment variable is required');
@@ -176,6 +179,7 @@ async function handleLeave(message) {
 
 async function handleSkip(message, n = 1) {
   const guildId = message.guild?.id;
+  log(`[cmd] !skip ${n} (guild: ${guildId})`);
   if (!guildId || !isPlaying(guildId)) {
     await message.reply("I'm not currently playing anything here.");
     return;
@@ -189,6 +193,24 @@ async function handleSkip(message, n = 1) {
     ok
       ? n > 1 ? `⏭️ Skipped ${n} tracks.` : '⏭️ Skipped.'
       : "Couldn't skip right now — try again in a moment.",
+  );
+}
+
+async function handleClear(message) {
+  const guildId = message.guild?.id;
+  if (!guildId || !isPlaying(guildId)) {
+    await message.reply("I'm not currently playing anything here.");
+    return;
+  }
+  if (!isBotOwnedSession(guildId)) {
+    await message.reply("Can't clear a human-created stream.");
+    return;
+  }
+  const removed = clearQueue(guildId);
+  await message.reply(
+    removed > 0
+      ? `🗑️ Cleared ${removed} song${removed === 1 ? '' : 's'} from the queue.`
+      : '🗑️ Queue was already empty.',
   );
 }
 
@@ -249,6 +271,7 @@ async function handleBump(message, guildId, n) {
 async function handlePlay(message, query) {
   const guildId = message.guild?.id;
   if (!guildId) return;
+  log(`[cmd] !play "${query}" (guild: ${guildId})`);
 
   const voiceChannel = message.member?.voice?.channel;
   if (!voiceChannel) {
@@ -295,7 +318,7 @@ async function handlePlay(message, query) {
     }
 
     if (sessionActive && isBotOwnedSession(guildId)) {
-      appendToQueue(guildId, tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail })));
+      appendToQueue(guildId, tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail, streamId: t.streamId })));
       const capped = totalFound > tracks.length;
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -320,7 +343,7 @@ async function handlePlay(message, query) {
     try {
       await joinAndPlay(voiceChannel, botUsername, message.channel, {
         isBotOwned: true,
-        initialQueue: tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail })),
+        initialQueue: tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail, streamId: t.streamId })),
       });
     } catch (err) {
       await thinking.edit(`❌ Couldn't start playback: ${err.message}`);
@@ -366,6 +389,7 @@ async function handlePlay(message, query) {
       return;
     }
     ({ stream, botUsername } = body);
+    log(`[cmd] resolved: "${stream.title || 'Untitled'}" streamId=${stream.id}`);
   } catch (err) {
     console.error('!play single POST error:', err);
     await thinking.edit('❌ Could not reach EchoDeck. Try again in a moment.');
@@ -373,7 +397,8 @@ async function handlePlay(message, query) {
   }
 
   if (sessionActive && isBotOwnedSession(guildId)) {
-    appendToQueue(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg }]);
+    appendToQueue(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg, streamId: stream.id }]);
+    log(`[cmd] appended to in-memory queue`);
     const addedEmbed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('✅ Added to queue')
@@ -410,6 +435,7 @@ async function handlePlay(message, query) {
 async function handlePlayNext(message, query) {
   const guildId = message.guild?.id;
   if (!guildId) return;
+  log(`[cmd] !playnext "${query}" (guild: ${guildId})`);
 
   const voiceChannel = message.member?.voice?.channel;
   if (!voiceChannel) {
@@ -459,7 +485,8 @@ async function handlePlayNext(message, query) {
   }
 
   if (sessionActive) {
-    insertNext(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg }]);
+    insertNext(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg, streamId: stream.id }]);
+    log(`[cmd] inserted at front of queue`);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('⏭️ Playing next')
@@ -576,6 +603,9 @@ client.on('messageCreate', async (message) => {
         await handleBump(message, guildId, n);
         break;
       }
+      case 'clear':
+        await handleClear(message);
+        break;
       case 'leave':
         await handleLeave(message);
         break;
@@ -597,6 +627,7 @@ client.on('messageCreate', async (message) => {
               `\`${COMMAND_PREFIX}nowplaying <username>\` — what someone is streaming on EchoDeck`,
               `\`${COMMAND_PREFIX}viewers <username>\` — viewer count for a stream`,
               `\`${COMMAND_PREFIX}join <username>\` — join voice and play a user's web queue`,
+              `\`${COMMAND_PREFIX}clear\` — remove all upcoming songs from the queue (keeps current song playing)`,
               `\`${COMMAND_PREFIX}leave\` — stop playback and leave the voice channel`,
               `\`${COMMAND_PREFIX}echo\` — show this help`,
             ].join('\n'),

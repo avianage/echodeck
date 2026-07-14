@@ -14,6 +14,8 @@ import {
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
 const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET;
 
+function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
+
 // How long (ms) to wait after the voice channel empties before ending a bot-owned
 // stream. Configurable via BOT_EMPTY_GRACE_SECONDS (default: 300 = 5 minutes).
 const EMPTY_CHANNEL_GRACE_MS =
@@ -33,6 +35,16 @@ async function fetchQueue(username) {
   return body.queue;
 }
 
+function markStreamsPlayed(streamIds) {
+  if (!streamIds?.length) return;
+  log(`[db] marking played: [${streamIds.join(', ')}]`);
+  fetch(`${API_BASE}/api/bot/streams`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', 'x-bot-secret': BOT_INTERNAL_SECRET },
+    body: JSON.stringify({ streamIds }),
+  }).catch((err) => console.error('markStreamsPlayed error:', err));
+}
+
 async function endBotStream() {
   try {
     await fetch(`${API_BASE}/api/bot/streams`, {
@@ -44,41 +56,63 @@ async function endBotStream() {
   }
 }
 
-async function resolveAudioUrl(videoId) {
-  const res = await fetch(`${API_BASE}/api/bot/resolve?videoId=${encodeURIComponent(videoId)}`, {
-    headers: { 'x-bot-secret': BOT_INTERNAL_SECRET },
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.message || 'Failed to resolve audio URL');
-  return body.url;
-}
-
 function extractVideoId(url) {
   const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   return match ? match[1] : null;
 }
 
-function spawnFfmpegAudio(sourceUrl) {
-  const proc = spawn('ffmpeg', [
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-i', sourceUrl,
+// Spawn yt-dlp piped directly into ffmpeg — no URL resolution, no expiry issues.
+function spawnPipeline(videoId) {
+  const ytdlpArgs = [
+    `https://www.youtube.com/watch?v=${videoId}`,
+    '--format', 'bestaudio[channels<=2]/bestaudio',
+    '--no-cache-dir',
+    '-o', '-',
+    '--quiet',
+    '--no-check-certificate',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=web_embedded',
+    '--retries', '2',
+    '--fragment-retries', '2',
+  ];
+  if (process.env.YTDLP_COOKIES_FILE) {
+    ytdlpArgs.push('--cookies', process.env.YTDLP_COOKIES_FILE);
+  }
+  const ytdlp = spawn('yt-dlp', ytdlpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  ytdlp.stderr?.on('data', (chunk) => {
+    const msg = chunk.toString().trimEnd();
+    if (msg) console.error('[yt-dlp]', msg);
+  });
+
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', 'pipe:0',
     '-vn',
+    '-ac', '2',
     '-c:a', 'libopus',
     '-b:a', '128k',
     '-f', 'ogg',
     'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  proc.stderr?.on('data', (chunk) => {
+  ffmpeg.stderr?.on('data', (chunk) => {
     const msg = chunk.toString();
     if (/error|invalid|403|404|fail/i.test(msg)) {
       console.error('[ffmpeg]', msg.trimEnd());
     }
   });
 
-  return proc;
+  // Suppress EPIPE: when ffmpeg exits before yt-dlp finishes writing, Node.js
+  // would otherwise throw an unhandled error and crash the process.
+  ffmpeg.stdin.on('error', (err) => {
+    if (err.code !== 'EPIPE') console.error('[pipeline] stdin error:', err);
+  });
+
+  ytdlp.stdout.pipe(ffmpeg.stdin);
+  // If yt-dlp exits with an error, close ffmpeg's stdin so it doesn't hang.
+  ytdlp.on('exit', (code) => { if (code !== 0) ffmpeg.stdin.end(); });
+
+  return { ffmpeg, ytdlp };
 }
 
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -100,6 +134,7 @@ async function playNext(session) {
       // Bot-owned session: queue is managed entirely via appendToQueue —
       // never refetch (would replay already-played tracks since DB rows
       // are never marked played). Signal idle and wait for !play.
+      log(`[play] queue exhausted (cursor=${session.cursor}, total=${session.queue.length})`);
       session.textChannel
         ?.send('📭 Queue finished. Add more songs with `!play`, or I\'ll leave in 5 minutes.')
         .catch(() => {});
@@ -115,6 +150,13 @@ async function playNext(session) {
   const current = session.queue[session.cursor];
   session.cursor += 1;
 
+  log(`[play] starting "${current.title || 'Untitled'}" (videoId: ${extractVideoId(current.url) || 'unknown'}) [${session.cursor}/${session.queue.length}]`);
+
+  // Keep DB count in sync so the queue-full check reflects consumed tracks.
+  if (session.isBotOwned && current.streamId) {
+    markStreamsPlayed([current.streamId]);
+  }
+
   const videoId = extractVideoId(current.url);
   if (!videoId) {
     await playNext(session)
@@ -123,53 +165,21 @@ async function playNext(session) {
     return;
   }
 
-  let audioUrl;
-  let ffmpeg;
-  try {
-    audioUrl = await resolveAudioUrl(videoId);
-    ffmpeg = spawnFfmpegAudio(audioUrl);
-  } catch (err) {
-    console.error(
-      `Failed to resolve/spawn track "${current.title || 'Untitled'}" (videoId: ${videoId}):`,
-      err,
-    );
+  const { ffmpeg, ytdlp } = spawnPipeline(videoId);
+  log(`[play] pipeline started for ${videoId}`);
 
-    session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
-    if (session.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      await session.textChannel
-        ?.send('❌ Too many unplayable tracks, stopping.')
-        .catch((e) => console.error('Failed to send stop message:', e));
-      stop(session.guildId);
-      return;
-    }
-
-    await session.textChannel
-      ?.send(`⚠️ Skipping unavailable track: ${current.title || 'Untitled'}`)
-      .catch((e) => console.error('Failed to send skip message:', e));
-
-    await playNext(session)
-      .catch((e) => { console.error('Voice playback error:', e); })
-      .finally(() => { session.advancing = false; });
-    return;
-  }
-
-  // Attached synchronously, right after spawn() returns and before ffmpeg is
-  // used anywhere else. spawn() does not throw for a bad binary/runtime
-  // failure (e.g. ENOENT) — that surfaces asynchronously as an 'error' event
-  // on the ChildProcess, and an unhandled 'error' event on a ChildProcess is
-  // fatal to the whole Node process by default. This covers ANY ffmpeg
-  // failure (missing binary, corrupt stream, permission error), not just the
-  // resolve failures the try/catch above already handles.
+  // Attached synchronously before the processes are stored in session state.
+  // spawn() does not throw for a bad binary — errors surface asynchronously
+  // as 'error' events. An unhandled 'error' on a ChildProcess is fatal to the
+  // Node process by default, so we must attach this handler immediately.
   ffmpeg.on('error', (err) => {
     console.error(`ffmpeg spawn/runtime error for videoId ${videoId}:`, err);
 
-    // Stale-event guard: after a track ends and the next one starts,
-    // session.ffmpeg is updated to the new process. If the old process later
-    // emits a late error (e.g. OS-level cleanup after SIGKILL), this check
-    // prevents it from triggering a spurious playNext call that would skip
-    // the track currently playing.
+    // Stale-event guard: if another track has already started, ignore.
     if (session.advancing || session.stopped || session.ffmpeg !== ffmpeg) return;
     session.advancing = true;
+    session.ytdlp?.kill('SIGKILL');
+    session.ytdlp = null;
 
     session.consecutiveFailures = (session.consecutiveFailures || 0) + 1;
     session.textChannel?.send(`⚠️ Playback error, skipping: ${current.title || 'Untitled'}`);
@@ -192,6 +202,7 @@ async function playNext(session) {
   });
 
   session.ffmpeg = ffmpeg;
+  session.ytdlp = ytdlp;
 
   const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
   session.player.play(resource);
@@ -254,6 +265,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
         queue,
         cursor: 0,
         ffmpeg: null,
+        ytdlp: null,
         textChannel,
         consecutiveFailures: 0,
         advancing: false,
@@ -301,6 +313,7 @@ export async function joinAndPlay(voiceChannel, username, textChannel, { isBotOw
     queue,
     cursor: 0,
     ffmpeg: null,
+    ytdlp: null,
     textChannel,
     consecutiveFailures: 0,
     advancing: false,
@@ -349,6 +362,7 @@ async function stopAndAwaitTeardown(guildId) {
   session.stopped = true;
   session.player.stop();
   session.ffmpeg?.kill('SIGKILL');
+  session.ytdlp?.kill('SIGKILL');
   const { connection } = session;
   connection.destroy();
   sessions.delete(guildId);
@@ -369,6 +383,7 @@ async function stopAndAwaitTeardown(guildId) {
 export function stop(guildId) {
   const session = sessions.get(guildId);
   if (!session) return false;
+  log(`[stop] stopping session for guild ${guildId} (cursor=${session.cursor}, total=${session.queue.length})`);
 
   if (session.emptyChannelTimer) {
     clearTimeout(session.emptyChannelTimer);
@@ -378,6 +393,7 @@ export function stop(guildId) {
   session.stopped = true;
   session.player.stop();
   session.ffmpeg?.kill('SIGKILL');
+  session.ytdlp?.kill('SIGKILL');
   session.connection.destroy();
   sessions.delete(guildId);
 
@@ -424,12 +440,22 @@ export function skip(guildId, n = 1) {
   const session = sessions.get(guildId);
   if (!session || session.stopped || session.advancing) return false;
 
+  log(`[skip] skip ${n} — cursor ${session.cursor} → ${Math.min(session.cursor + n - 1, session.queue.length)}, queue total ${session.queue.length}`);
+
   if (n > 1) {
+    // Mark the songs being jumped over as played (the currently-playing song
+    // is marked by playNext when it started; only the in-between ones need it).
+    const skippedIds = session.queue
+      .slice(session.cursor, session.cursor + n - 1)
+      .map((t) => t.streamId)
+      .filter(Boolean);
+    if (session.isBotOwned && skippedIds.length) markStreamsPlayed(skippedIds);
     session.cursor = Math.min(session.cursor + n - 1, session.queue.length);
   }
 
   session.advancing = true;
   session.ffmpeg?.kill('SIGKILL');
+  session.ytdlp?.kill('SIGKILL');
   session.player.stop(); // Idle listener is blocked by advancing=true
 
   playNext(session)
@@ -439,12 +465,30 @@ export function skip(guildId, n = 1) {
   return true;
 }
 
+// Remove all upcoming tracks from the queue without stopping the current song.
+export function clearQueue(guildId) {
+  const session = sessions.get(guildId);
+  if (!session || session.stopped) return false;
+  const removed = session.queue.length - session.cursor;
+  session.queue.splice(session.cursor);
+  log(`[queue] cleared ${removed} upcoming track(s)`);
+  if (session.isBotOwned) {
+    // Delete remaining unplayed DB rows (currently playing is already marked played).
+    fetch(`${API_BASE}/api/bot/streams`, {
+      method: 'DELETE',
+      headers: { 'x-bot-secret': BOT_INTERNAL_SECRET },
+    }).catch((err) => console.error('clearQueue DB cleanup error:', err));
+  }
+  return removed;
+}
+
 // Append tracks to the in-memory queue of an active session.
 // tracks: array of { title, url, thumbnail } (same shape fetchQueue returns).
 export function appendToQueue(guildId, tracks) {
   const session = sessions.get(guildId);
   if (!session || !tracks?.length) return false;
   session.queue.push(...tracks);
+  log(`[queue] append ${tracks.length} track(s) → queue now ${session.cursor}/${session.queue.length}`);
   cancelEmptyChannelGrace(guildId);
   // If the queue was exhausted and the player is idle, restart playback immediately.
   if (
@@ -467,6 +511,7 @@ export function insertNext(guildId, tracks) {
   const session = sessions.get(guildId);
   if (!session || !tracks?.length) return false;
   session.queue.splice(session.cursor, 0, ...tracks);
+  log(`[queue] insertNext ${tracks.length} track(s) at cursor ${session.cursor} → total ${session.queue.length}`);
   cancelEmptyChannelGrace(guildId);
   if (
     !session.advancing &&

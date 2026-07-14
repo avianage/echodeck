@@ -103,6 +103,38 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ stream, botUsername: botUser.username }, { status: 201 });
 }
 
+// PATCH /api/bot/streams
+// Body: { streamIds: string[] } — marks the given stream rows as played so the
+// DB queue-length count stays in sync with the in-memory cursor position.
+export async function PATCH(req: NextRequest) {
+  const authError = botSecretGuard(req);
+  if (authError) return authError;
+
+  let body: { streamIds?: string[] };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ message: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const streamIds = body.streamIds;
+  if (!Array.isArray(streamIds) || streamIds.length === 0) {
+    return NextResponse.json({ message: 'streamIds must be a non-empty array' }, { status: 400 });
+  }
+
+  try {
+    await prismaClient.stream.updateMany({
+      where: { id: { in: streamIds } },
+      data: { played: true },
+    });
+  } catch (err) {
+    logger.error({ err }, 'Bot stream mark-played failed');
+    return NextResponse.json({ message: 'Failed to mark streams as played' }, { status: 500 });
+  }
+
+  return new Response(null, { status: 204 });
+}
+
 // DELETE /api/bot/streams
 // Tears down the bot's active session: removes unplayed queue rows and any
 // CurrentStream / ListeningActivity left over from the session.
