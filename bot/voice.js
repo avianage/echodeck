@@ -332,6 +332,8 @@ function attachPlayerListeners(session) {
   const { player } = session;
   player.on(AudioPlayerStatus.Idle, () => {
     if (session.advancing || session.stopped) return;
+    const finishedTrack = session.queue[session.cursor - 1];
+    if (finishedTrack) finishedTrack.finished = true;
     session.advancing = true;
     playNext(session)
       .catch((err) => { console.error('Voice playback error:', err); })
@@ -550,6 +552,15 @@ export function bump(guildId, n) {
   if (target >= session.queue.length) return false;
   const [track] = session.queue.splice(target, 1);
   session.queue.splice(session.cursor, 0, track);
+  return true;
+}
+
+// Drop all upcoming (unplayed) tracks, leaving the currently playing track
+// and the session/connection untouched.
+export function clearQueue(guildId) {
+  const session = sessions.get(guildId);
+  if (!session) return false;
+  session.queue.length = session.cursor;
   return true;
 }
 

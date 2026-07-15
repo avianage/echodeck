@@ -10,21 +10,19 @@ import {
   skip,
   appendToQueue,
   insertNext,
-  clearQueue,
   forceDisconnect,
   getSessionQueue,
   getCurrentTrack,
   bump,
   pause,
   resume,
+  clearQueue,
 } from './voice.js';
 
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const API_BASE = process.env.ECHODECK_API_BASE || 'http://app:3002';
 const COMMAND_PREFIX = process.env.BOT_COMMAND_PREFIX || '!';
 const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET;
-
-function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
 
 if (!DISCORD_TOKEN) {
   throw new Error('DISCORD_BOT_TOKEN environment variable is required');
@@ -179,7 +177,6 @@ async function handleLeave(message) {
 
 async function handleSkip(message, n = 1) {
   const guildId = message.guild?.id;
-  log(`[cmd] !skip ${n} (guild: ${guildId})`);
   if (!guildId || !isPlaying(guildId)) {
     await message.reply("I'm not currently playing anything here.");
     return;
@@ -193,24 +190,6 @@ async function handleSkip(message, n = 1) {
     ok
       ? n > 1 ? `⏭️ Skipped ${n} tracks.` : '⏭️ Skipped.'
       : "Couldn't skip right now — try again in a moment.",
-  );
-}
-
-async function handleClear(message) {
-  const guildId = message.guild?.id;
-  if (!guildId || !isPlaying(guildId)) {
-    await message.reply("I'm not currently playing anything here.");
-    return;
-  }
-  if (!isBotOwnedSession(guildId)) {
-    await message.reply("Can't clear a human-created stream.");
-    return;
-  }
-  const removed = clearQueue(guildId);
-  await message.reply(
-    removed > 0
-      ? `🗑️ Cleared ${removed} song${removed === 1 ? '' : 's'} from the queue.`
-      : '🗑️ Queue was already empty.',
   );
 }
 
@@ -265,13 +244,25 @@ async function handleBump(message, guildId, n) {
   await message.reply(`✅ **${next?.title || 'Track'}** will play next.`);
 }
 
+async function handleClear(message, guildId) {
+  if (!guildId || !isPlaying(guildId)) {
+    await message.reply("I'm not currently playing anything here.");
+    return;
+  }
+  if (!isBotOwnedSession(guildId)) {
+    await message.reply("Can't clear a human-created stream.");
+    return;
+  }
+  clearQueue(guildId);
+  await message.reply('🗑️ Queue cleared — still playing the current track.');
+}
+
 // Handles both !play <single query> and !play <playlist URL>.
 // Mid-session: adds to queue without restarting.
 // No session: starts one and plays immediately.
 async function handlePlay(message, query) {
   const guildId = message.guild?.id;
   if (!guildId) return;
-  log(`[cmd] !play "${query}" (guild: ${guildId})`);
 
   const voiceChannel = message.member?.voice?.channel;
   if (!voiceChannel) {
@@ -318,7 +309,7 @@ async function handlePlay(message, query) {
     }
 
     if (sessionActive && isBotOwnedSession(guildId)) {
-      appendToQueue(guildId, tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail, streamId: t.streamId })));
+      appendToQueue(guildId, tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail })));
       const capped = totalFound > tracks.length;
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -343,7 +334,7 @@ async function handlePlay(message, query) {
     try {
       await joinAndPlay(voiceChannel, botUsername, message.channel, {
         isBotOwned: true,
-        initialQueue: tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail, streamId: t.streamId })),
+        initialQueue: tracks.map((t) => ({ title: t.title, url: t.url, thumbnail: t.thumbnail })),
       });
     } catch (err) {
       await thinking.edit(`❌ Couldn't start playback: ${err.message}`);
@@ -389,7 +380,6 @@ async function handlePlay(message, query) {
       return;
     }
     ({ stream, botUsername } = body);
-    log(`[cmd] resolved: "${stream.title || 'Untitled'}" streamId=${stream.id}`);
   } catch (err) {
     console.error('!play single POST error:', err);
     await thinking.edit('❌ Could not reach EchoDeck. Try again in a moment.');
@@ -397,8 +387,7 @@ async function handlePlay(message, query) {
   }
 
   if (sessionActive && isBotOwnedSession(guildId)) {
-    appendToQueue(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg, streamId: stream.id }]);
-    log(`[cmd] appended to in-memory queue`);
+    appendToQueue(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg }]);
     const addedEmbed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('✅ Added to queue')
@@ -435,7 +424,6 @@ async function handlePlay(message, query) {
 async function handlePlayNext(message, query) {
   const guildId = message.guild?.id;
   if (!guildId) return;
-  log(`[cmd] !playnext "${query}" (guild: ${guildId})`);
 
   const voiceChannel = message.member?.voice?.channel;
   if (!voiceChannel) {
@@ -485,8 +473,7 @@ async function handlePlayNext(message, query) {
   }
 
   if (sessionActive) {
-    insertNext(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg, streamId: stream.id }]);
-    log(`[cmd] inserted at front of queue`);
+    insertNext(guildId, [{ title: stream.title, url: stream.url, thumbnail: stream.smallImg }]);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('⏭️ Playing next')
@@ -604,7 +591,7 @@ client.on('messageCreate', async (message) => {
         break;
       }
       case 'clear':
-        await handleClear(message);
+        await handleClear(message, guildId);
         break;
       case 'leave':
         await handleLeave(message);
@@ -620,6 +607,7 @@ client.on('messageCreate', async (message) => {
               `\`${COMMAND_PREFIX}pause\` — pause or resume playback`,
               `\`${COMMAND_PREFIX}resume\` — resume paused playback (aliases: \`unpause\`, \`continue\`)`,
               `\`${COMMAND_PREFIX}bump <N>\` — move queue position N to play next (N ≥ 2)`,
+              `\`${COMMAND_PREFIX}clear\` — clear the upcoming queue without leaving`,
               `\`${COMMAND_PREFIX}playnext <song / URL>\` — insert a track to play right after the current one`,
               `\`${COMMAND_PREFIX}queue\` — show upcoming tracks in the bot session`,
               `\`${COMMAND_PREFIX}queue <username>\` — show a user's EchoDeck web queue`,
@@ -627,7 +615,6 @@ client.on('messageCreate', async (message) => {
               `\`${COMMAND_PREFIX}nowplaying <username>\` — what someone is streaming on EchoDeck`,
               `\`${COMMAND_PREFIX}viewers <username>\` — viewer count for a stream`,
               `\`${COMMAND_PREFIX}join <username>\` — join voice and play a user's web queue`,
-              `\`${COMMAND_PREFIX}clear\` — remove all upcoming songs from the queue (keeps current song playing)`,
               `\`${COMMAND_PREFIX}leave\` — stop playback and leave the voice channel`,
               `\`${COMMAND_PREFIX}echo\` — show this help`,
             ].join('\n'),
